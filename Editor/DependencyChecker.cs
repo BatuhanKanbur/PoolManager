@@ -53,10 +53,11 @@ namespace PoolManager.Editor
                 EditorApplication.update += WaitForPackageInstallation;
                 return;
             }
-            if(!AsmdefHasReferences(RequiredReferences))
-                ApplyAsmdefReferences();
+           
             if (!HasDefineSymbol(DefineSymbol))
                 AddDefineSymbols();
+            if(!AsmdefHasReferences(RequiredReferences))
+                UpdateAsmdef();
         }
 
         private static void WaitForPackageInstallation()
@@ -68,50 +69,50 @@ namespace PoolManager.Editor
                 Run();
             }
         }
-
-        private static void ApplyAsmdefReferences()
-        {
-            if (!File.Exists(PoolManagerAsmdefPath))
-            {
-                Debug.LogError($"[PoolManager] Asmdef not found: {PoolManagerAsmdefPath}");
-                return;
-            }
-
-            var json = File.ReadAllText(PoolManagerAsmdefPath);
-            var asmdef = JsonUtility.FromJson<AsmdefJson>(json);
-
-            bool changed = false;
-
-            foreach (var reference in RequiredReferences)
-            {
-                if (!asmdef.references.Contains(reference))
-                {
-                    asmdef.references.Add(reference);
-                    changed = true;
-                }
-            }
-
-            if (changed)
-            {
-                File.WriteAllText(PoolManagerAsmdefPath, JsonUtility.ToJson(asmdef, true));
-                AssetDatabase.Refresh();
-                Debug.Log("[PoolManager] Asmdef references updated.");
-            }
-        }
-
         private static void AddDefineSymbols()
         {
             foreach (var group in Groups)
             {
-                string symbols = PlayerSettings.GetScriptingDefineSymbolsForGroup(group);
-                if (!symbols.Contains(DefineSymbol))
-                {
-                    symbols = string.IsNullOrEmpty(symbols) ? DefineSymbol : symbols + ";" + DefineSymbol;
-                    PlayerSettings.SetScriptingDefineSymbolsForGroup(group, symbols);
-                }
+                var symbols = PlayerSettings.GetScriptingDefineSymbolsForGroup(group);
+                if (symbols.Contains(DefineSymbol)) continue;
+                symbols = string.IsNullOrEmpty(symbols) ? DefineSymbol : symbols + ";" + DefineSymbol;
+                PlayerSettings.SetScriptingDefineSymbolsForGroup(group, symbols);
             }
 
             Debug.Log("[PoolManager] Define symbol added : " + DefineSymbol);
+        }
+
+        private static void UpdateAsmdef()
+        {
+            if (!File.Exists(PoolManagerAsmdefPath))
+            {
+                Debug.LogWarning($"[PoolManager] asmdef file not found at {PoolManagerAsmdefPath}");
+                return;
+            }
+
+            var asmdefText = File.ReadAllText(PoolManagerAsmdefPath);
+            var asmdef = JsonUtility.FromJson<AsmdefData>(asmdefText);
+            var refs = asmdef.references.ToList();
+            bool changed = false;
+
+            void TryAdd(string asmName)
+            {
+                if (!refs.Contains(asmName))
+                {
+                    refs.Add(asmName);
+                    changed = true;
+                    Debug.Log($"[PoolManager] Added asmdef reference: {asmName}");
+                }
+            }
+
+            foreach (var requiredReference in RequiredReferences)
+                TryAdd(requiredReference);
+
+            if (!changed) return;
+            asmdef.references = refs.ToArray();
+            File.WriteAllText(PoolManagerAsmdefPath, JsonUtility.ToJson(asmdef, true));
+            AssetDatabase.Refresh();
+            Debug.Log("[PoolManager] asmdef updated.");
         }
 
         private static bool IsPackageInstalled(string path) => Directory.Exists(path);
@@ -119,7 +120,6 @@ namespace PoolManager.Editor
         private static bool AsmdefHasReferences(params string[] requiredRefs)
         {
             if (!File.Exists(PoolManagerAsmdefPath)) return false;
-
             var asmdefText = File.ReadAllText(PoolManagerAsmdefPath);
             var asmdef = JsonUtility.FromJson<AsmdefData>(asmdefText);
             var refs = asmdef.references ?? Array.Empty<string>();
@@ -132,21 +132,6 @@ namespace PoolManager.Editor
             return Groups.All(group => PlayerSettings.GetScriptingDefineSymbolsForGroup(group).Split(';').Contains(symbol));
         }
 
-        [System.Serializable]
-        private class AsmdefJson
-        {
-            public string name;
-            public List<string> references = new();
-            public List<string> includePlatforms = new();
-            public List<string> excludePlatforms = new();
-            public bool allowUnsafeCode;
-            public bool overrideReferences;
-            public List<string> precompiledReferences = new();
-            public bool autoReferenced = true;
-            public List<string> defineConstraints = new();
-            public List<string> versionDefines = new();
-            public bool noEngineReferences;
-        }
         [Serializable]
         private class AsmdefData
         {
