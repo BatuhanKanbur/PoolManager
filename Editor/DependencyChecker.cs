@@ -19,7 +19,7 @@ namespace PoolManager.Editor
 
         private static readonly string[] RequiredReferences = new[]
         {
-            "AssetManager.Runtime",
+            "AssetManager",
             "UniTask",
             "Unity.Addressables"
         };
