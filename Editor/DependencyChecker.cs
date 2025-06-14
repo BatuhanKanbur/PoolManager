@@ -45,7 +45,6 @@ namespace PoolManager.Editor
         private static void Run()
         {
             EditorApplication.update -= Run;
-
             if (!IsPackageInstalled($"Packages/{AssetManagerPackageName}"))
             {
                 Debug.Log("[PoolManager] AssetManager not found, installing...");
@@ -53,7 +52,8 @@ namespace PoolManager.Editor
                 EditorApplication.update += WaitForPackageInstallation;
                 return;
             }
-           
+            Debug.Log(HasDefineSymbol(DefineSymbol));
+            Debug.Log(AsmdefHasReferences(RequiredReferences));
             if (!HasDefineSymbol(DefineSymbol))
                 AddDefineSymbols();
             if(!AsmdefHasReferences(RequiredReferences))
