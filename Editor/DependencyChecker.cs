@@ -52,8 +52,6 @@ namespace PoolManager.Editor
                 EditorApplication.update += WaitForPackageInstallation;
                 return;
             }
-            Debug.Log(HasDefineSymbol(DefineSymbol));
-            Debug.Log(AsmdefHasReferences(RequiredReferences));
             if (!HasDefineSymbol(DefineSymbol))
                 AddDefineSymbols();
             if(!AsmdefHasReferences(RequiredReferences))
