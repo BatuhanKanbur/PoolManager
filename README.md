@@ -5,7 +5,7 @@
 Developed by [Batuhan Kanbur](https://github.com/BatuhanKanbur), `PoolManager` is a lightweight and high-performance pooling system built for professionals who value **clean architecture**, **async safety**, and **Addressables compatibility**.
 
 > "True engineering is solving complex problems with simple and sustainable solutions."  
-> — Batuhan Kanbur, Game Developer
+> — Batuhan Kanbur, Senior Game Developer
 
 ---
 
@@ -25,14 +25,9 @@ Developed by [Batuhan Kanbur](https://github.com/BatuhanKanbur), `PoolManager` i
 
 > **Requirement:** Unity 2021.3+  
 > Add `PoolManager` via Git URL in Unity Package Manager:
-
-### Add `PoolManager`
-
 ```
 https://github.com/BatuhanKanbur/PoolManager.git
 ```
-
----
 
 ## 🚀 Quick Start
 
@@ -137,7 +132,7 @@ All pool access is synchronized with `SemaphoreSlim` to prevent race conditions.
 
 **Batuhan Kanbur**  
 Senior Game Developer — [batuhankanbur.com](https://batuhankanbur.com)  
-[GitHub](https://github.com/BatuhanKanbur) | [LinkedIn](https://www.linkedin.com/in/batuhankanbur)
+[GitHub](https://github.com/BatuhanKanbur) | [LinkedIn](https://www.linkedin.com/in/bkanbur/)
 
 ---
 
