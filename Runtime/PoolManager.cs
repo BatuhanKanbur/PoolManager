@@ -48,17 +48,6 @@ namespace PoolManager.Runtime
             if (!_initialized) return;
             SceneManager.activeSceneChanged -= OnSceneChanged;
             Application.quitting -= Dispose;
-            foreach (var pool in ObjectPools.Values)
-            {
-                foreach (var obj in pool)
-                {
-                    if (obj)
-                    {
-                        Object.Destroy(obj);
-                    }
-                }
-            }
-
             ObjectPools.Clear();
             PoolLocks.Clear();
             _initialized = false;
