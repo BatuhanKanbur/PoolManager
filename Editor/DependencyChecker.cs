@@ -1,4 +1,5 @@
 ﻿#if UNITY_EDITOR
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -52,9 +53,10 @@ namespace PoolManager.Editor
                 EditorApplication.update += WaitForPackageInstallation;
                 return;
             }
-
-            ApplyAsmdefReferences();
-            AddDefineSymbols();
+            if(!AsmdefHasReferences(RequiredReferences))
+                ApplyAsmdefReferences();
+            if (!HasDefineSymbol(DefineSymbol))
+                AddDefineSymbols();
         }
 
         private static void WaitForPackageInstallation()
@@ -112,9 +114,22 @@ namespace PoolManager.Editor
             Debug.Log("[PoolManager] Define symbol added : " + DefineSymbol);
         }
 
-        private static bool IsPackageInstalled(string path)
+        private static bool IsPackageInstalled(string path) => Directory.Exists(path);
+
+        private static bool AsmdefHasReferences(params string[] requiredRefs)
         {
-            return Directory.Exists(path);
+            if (!File.Exists(PoolManagerAsmdefPath)) return false;
+
+            var asmdefText = File.ReadAllText(PoolManagerAsmdefPath);
+            var asmdef = JsonUtility.FromJson<AsmdefData>(asmdefText);
+            var refs = asmdef.references ?? Array.Empty<string>();
+
+            return requiredRefs.All(r => refs.Contains(r));
+        }
+
+        private static bool HasDefineSymbol(string symbol)
+        {
+            return Groups.All(group => PlayerSettings.GetScriptingDefineSymbolsForGroup(group).Split(';').Contains(symbol));
         }
 
         [System.Serializable]
@@ -131,6 +146,12 @@ namespace PoolManager.Editor
             public List<string> defineConstraints = new();
             public List<string> versionDefines = new();
             public bool noEngineReferences;
+        }
+        [Serializable]
+        private class AsmdefData
+        {
+            public string name;
+            public string[] references = Array.Empty<string>();
         }
     }
 }
