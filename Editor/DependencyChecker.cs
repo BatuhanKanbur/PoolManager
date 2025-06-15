@@ -1,11 +1,9 @@
 ﻿#if UNITY_EDITOR
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.PackageManager;
-using UnityEditor.PackageManager.Requests;
 using UnityEngine;
 
 namespace PoolManager.Editor
@@ -36,7 +34,8 @@ namespace PoolManager.Editor
             BuildTargetGroup.PS5,
             BuildTargetGroup.XboxOne
         };
-
+        private static int retryCount = 0;
+        private const int maxRetries = 10;
         static DependencyChecker()
         {
             EditorApplication.update += Run;
@@ -52,24 +51,50 @@ namespace PoolManager.Editor
                 EditorApplication.update += WaitForPackageInstallation;
                 return;
             }
-
             if (HasDefineSymbol(DefineSymbol) && !AsmdefHasReferences(RequiredReferences))
+            {
+                Debug.Log("[PoolManager] Define found but asmdef references are missing, updating...");
                 RemoveDefineSymbols();
-            if(!AsmdefHasReferences(RequiredReferences))
+
+                if (retryCount < maxRetries)
+                {
+                    retryCount++;
+                    EditorApplication.update += Run; // Tekrar dene birkaç frame bekle
+                    return;
+                }
+
+                Debug.LogError("[PoolManager] Define found but asmdef references are missing, and max retries reached. Please check manually.");
+                return;
+            }
+
+            // Referanslar eksikse asmdef dosyasını güncelle, sonra tekrar kontrol için Run() ekle
+            if (!AsmdefHasReferences(RequiredReferences))
+            {
+                Debug.Log("[PoolManager] asmdef references missing, updating...");
                 UpdateAsmdef();
+
+                // Güncellemeden sonra dosya sistemi tam oturması için tekrar Run çağır
+                EditorApplication.update += Run;
+                return;
+            }
             if (!HasDefineSymbol(DefineSymbol))
+            {
+                Debug.Log("[PoolManager] Define is missing, adding...");
                 AddDefineSymbols();
+            }
+            retryCount = 0;
         }
 
         private static void WaitForPackageInstallation()
         {
             if (IsPackageInstalled($"Packages/{AssetManagerPackageName}"))
             {
-                Debug.Log("[PoolManager] AssetManager installed.");
+                Debug.Log("[PoolManager] AssetManager installed successfully.");
                 EditorApplication.update -= WaitForPackageInstallation;
                 Run();
             }
         }
+
         private static void AddDefineSymbols()
         {
             foreach (var group in Groups)
@@ -82,6 +107,7 @@ namespace PoolManager.Editor
 
             Debug.Log("[PoolManager] Define symbol added : " + DefineSymbol);
         }
+
         private static void RemoveDefineSymbols()
         {
             foreach (var group in Groups)
@@ -123,6 +149,7 @@ namespace PoolManager.Editor
                 TryAdd(requiredReference);
 
             if (!changed) return;
+
             asmdef.references = refs.ToArray();
             File.WriteAllText(PoolManagerAsmdefPath, JsonUtility.ToJson(asmdef, true));
             AssetDatabase.Refresh();
