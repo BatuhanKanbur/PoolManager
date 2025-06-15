@@ -57,6 +57,13 @@ namespace PoolManager.Runtime
             Dispose();
             Resources.UnloadUnusedAssets();
         }
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            _initialized = false;
+            ObjectPools.Clear();
+            PoolLocks.Clear();
+        }
         private static SemaphoreSlim GetOrCreateLock(AssetReference assetReference)
         {
             if (PoolLocks.TryGetValue(assetReference, out var semaphore)) return semaphore;
