@@ -52,10 +52,13 @@ namespace PoolManager.Editor
                 EditorApplication.update += WaitForPackageInstallation;
                 return;
             }
-            if (!HasDefineSymbol(DefineSymbol))
-                AddDefineSymbols();
+
+            if (HasDefineSymbol(DefineSymbol) && !AsmdefHasReferences(RequiredReferences))
+                RemoveDefineSymbols();
             if(!AsmdefHasReferences(RequiredReferences))
                 UpdateAsmdef();
+            if (!HasDefineSymbol(DefineSymbol))
+                AddDefineSymbols();
         }
 
         private static void WaitForPackageInstallation()
@@ -78,6 +81,19 @@ namespace PoolManager.Editor
             }
 
             Debug.Log("[PoolManager] Define symbol added : " + DefineSymbol);
+        }
+        private static void RemoveDefineSymbols()
+        {
+            foreach (var group in Groups)
+            {
+                var symbols = PlayerSettings.GetScriptingDefineSymbolsForGroup(group);
+                if (!symbols.Contains(DefineSymbol)) continue;
+                var symbolList = symbols.Split(';').ToList();
+                symbolList.RemoveAll(s => s == DefineSymbol);
+                var newSymbols = string.Join(";", symbolList);
+                PlayerSettings.SetScriptingDefineSymbolsForGroup(group, newSymbols);
+            }
+            Debug.Log("[PoolManager] Define symbol removed : " + DefineSymbol);
         }
 
         private static void UpdateAsmdef()
