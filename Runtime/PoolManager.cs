@@ -37,7 +37,16 @@ namespace PoolManager.Runtime
         static PoolManager() => Init();
         private static void Init()
         {
-            if (_initialized) return;
+			if (_initialized)
+    		{
+				if (ObjectPools.Count == 0 || !SceneManager.GetActiveScene().isLoaded)
+				{
+					ObjectPools.Clear();
+					PoolLocks.Clear();
+					_initialized = false;
+				}
+        		else return;
+			}
             SceneManager.activeSceneChanged += OnSceneChanged;
             Application.quitting += Dispose;
             _initialized = true;
@@ -59,9 +68,7 @@ namespace PoolManager.Runtime
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
         {
-            _initialized = false;
-            ObjectPools.Clear();
-            PoolLocks.Clear();
+            Dispose();
         }
         private static SemaphoreSlim GetOrCreateLock(AssetReference assetReference)
         {

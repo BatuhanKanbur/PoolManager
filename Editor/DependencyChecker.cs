@@ -23,14 +23,9 @@ namespace PoolManager.Editor
             "UniTask",
             "Unity.Addressables"
         };
-        static DependencyChecker()
-        {
-            EditorApplication.update += Run;
-        }
-
+        static DependencyChecker() => Run();
         private static void Run()
         {
-            EditorApplication.update -= Run;
             foreach (var requiredPackage in RequiredPackages)
             {
                 if (IsPackageInstalled($"Packages/{requiredPackage.Item1}")) continue;
@@ -54,6 +49,7 @@ namespace PoolManager.Editor
             AsmdefManager.UpdateAsmdef(AsmdefPath, newDefineSymbol, RequiredReferences);
             Debug.Log($"[PoolManager] Adding define symbols: {newDefineSymbol}");
             DefineManager.AddDefineSymbols(newDefineSymbol);
+            Debug.Log("[PoolManager] All dependencies installed and verified.");
         }
 
         private static void WaitForPackageInstallation()
