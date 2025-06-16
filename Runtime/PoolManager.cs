@@ -15,7 +15,6 @@
 /// by combining clean architecture with cutting-edge Unity technologies.
 /// </summary>
 ///
-#if POOLMANAGER_INITIALIZED
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -282,4 +281,3 @@ namespace PoolManager.Runtime
         #endregion
     }
 }
-#endif
