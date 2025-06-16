@@ -40,7 +40,12 @@ namespace PoolManager.Editor
                 EditorApplication.update += WaitForPackageInstallation;
                 return;
             }
-            if(AsmdefManager.AsmdefHasVerified(AsmdefPath)) return;
+
+            if (AsmdefManager.AsmdefHasVerified(AsmdefPath))
+            {
+                Debug.Log("[PoolManager] All dependencies verified.");
+                return;
+            }
             var newDefineSymbol = DefineSymbol + DateTime.Now.ToString("yyyyMMddHHmmss");
             Debug.Log($"[PoolManager] {AsmdefPath} not verified, installing...");
             DefineManager.RemoveDefineSymbols(DefineSymbol);
