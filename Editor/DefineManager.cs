@@ -36,20 +36,19 @@ namespace PoolManager.Editor
                 Debug.Log("[PoolManager] Define symbol added : " + defineSymbol);
             }
         }
-        public static void RemoveDefineSymbols(params string[] defineSymbols)
+        public static void RemoveDefineSymbols(params string[] defineSymbolPrefixes)
         {
-            foreach (var defineSymbol in defineSymbols)
+            foreach (var group in Groups)
             {
-                foreach (var group in Groups)
+                var symbols = PlayerSettings.GetScriptingDefineSymbolsForGroup(group);
+                var symbolList = symbols.Split(';').ToList();
+                foreach (var prefix in defineSymbolPrefixes)
                 {
-                    var symbols = PlayerSettings.GetScriptingDefineSymbolsForGroup(group);
-                    if (!symbols.Contains(defineSymbol)) continue;
-                    var symbolList = symbols.Split(';').ToList();
-                    symbolList.RemoveAll(s => s == defineSymbol);
-                    var newSymbols = string.Join(";", symbolList);
-                    PlayerSettings.SetScriptingDefineSymbolsForGroup(group, newSymbols);
+                    symbolList.RemoveAll(s => s.StartsWith(prefix));
+                    Debug.Log($"[PoolManager] Removed define symbols starting with: {prefix}");
                 }
-                Debug.Log("[PoolManager] Define symbol removed : " + defineSymbol);
+                var newSymbols = string.Join(";", symbolList);
+                PlayerSettings.SetScriptingDefineSymbolsForGroup(group, newSymbols);
             }
         }
       
