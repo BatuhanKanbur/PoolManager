@@ -25,7 +25,7 @@ namespace PoolManager.Editor
         };
         static DependencyChecker()
         {
-            // EditorApplication.update += Run;
+            EditorApplication.update += Run;
         }
 
         private static void Run()
