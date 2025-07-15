@@ -32,25 +32,32 @@ namespace PoolManager.Runtime
         private static readonly Dictionary<AssetReference, Queue<GameObject>> ObjectPools = new();
         private static readonly Dictionary<AssetReference, SemaphoreSlim> PoolLocks = new();
 
-        #region Initialization and Cleanup
+        private static readonly Dictionary<string, Queue<GameObject>> StringPools = new();
+        private static readonly Dictionary<string, SemaphoreSlim> StringPoolLocks = new();
+
+        #region Initialization
         private static bool _initialized;
         static PoolManager() => Init();
         private static void Init()
         {
-			if (_initialized)
-    		{
-				if (ObjectPools.Count == 0 || !SceneManager.GetActiveScene().isLoaded)
-				{
-					ObjectPools.Clear();
-					PoolLocks.Clear();
-					_initialized = false;
-				}
-        		else return;
-			}
+            if (_initialized)
+            {
+                if (ObjectPools.Count == 0 || !SceneManager.GetActiveScene().isLoaded)
+                {
+                    ObjectPools.Clear();
+                    PoolLocks.Clear();
+                    StringPools.Clear();
+                    StringPoolLocks.Clear();
+                    _initialized = false;
+                }
+                else return;
+            }
+
             SceneManager.activeSceneChanged += OnSceneChanged;
             Application.quitting += Dispose;
             _initialized = true;
         }
+
         private static void Dispose()
         {
             if (!_initialized) return;
@@ -58,18 +65,20 @@ namespace PoolManager.Runtime
             Application.quitting -= Dispose;
             ObjectPools.Clear();
             PoolLocks.Clear();
+            StringPools.Clear();
+            StringPoolLocks.Clear();
             _initialized = false;
         }
+
         private static void OnSceneChanged(Scene oldScene, Scene newScene)
         {
             Dispose();
             Resources.UnloadUnusedAssets();
         }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStatics()
-        {
-            Dispose();
-        }
+        private static void ResetStatics() => Dispose();
+
         private static SemaphoreSlim GetOrCreateLock(AssetReference assetReference)
         {
             if (PoolLocks.TryGetValue(assetReference, out var semaphore)) return semaphore;
@@ -77,6 +86,17 @@ namespace PoolManager.Runtime
             PoolLocks.Add(assetReference, semaphore);
             return semaphore;
         }
+
+        private static SemaphoreSlim GetOrCreateLock(string key)
+        {
+            if (StringPoolLocks.TryGetValue(key, out var semaphore)) return semaphore;
+            semaphore = new SemaphoreSlim(1, 1);
+            StringPoolLocks.Add(key, semaphore);
+            return semaphore;
+        }
+        #endregion
+
+        #region AssetReference Async
         public static async UniTask CreatePool(AssetReference assetReference, int initialSize = 10)
         {
             var semaphore = GetOrCreateLock(assetReference);
@@ -84,15 +104,11 @@ namespace PoolManager.Runtime
             try
             {
                 for (var i = 0; i < initialSize; i++)
-                {
                     await AddObjectToPool(assetReference);
-                }
             }
-            finally
-            {
-                semaphore.Release();
-            }
+            finally { semaphore.Release(); }
         }
+
         private static async UniTask AddObjectToPool(AssetReference assetReference)
         {
             var prefab = await AssetManager<GameObject>.LoadAsset(assetReference);
@@ -103,105 +119,13 @@ namespace PoolManager.Runtime
             }
             var instance = Object.Instantiate(prefab, Vector3.one * -100f, Quaternion.identity);
             instance.SetActive(false);
+
             if (!ObjectPools.TryGetValue(assetReference, out var pool))
-            {
-                pool = new Queue<GameObject>();
-                ObjectPools.Add(assetReference, pool);
-            }
+                ObjectPools.Add(assetReference, pool = new Queue<GameObject>());
+
             pool.Enqueue(instance);
         }
-        public static void ReleaseObject(AssetReference assetReference, GameObject obj)
-        {
-            if (!obj) return;
-            obj.SetActive(false);
-            if (!ObjectPools.TryGetValue(assetReference, out var pool))
-            {
-                pool = new Queue<GameObject>();
-                ObjectPools.Add(assetReference, pool);
-            }
-            pool.Enqueue(obj);
-        }
 
-        #endregion
-
-        #region Synchronous Methods
-        [Obsolete("GetObjectSync is a blocking call and may freeze the main thread. Use with caution!", false)]
-        public static GameObject GetObjectSync(AssetReference assetReference)
-        {
-            var semaphore = GetOrCreateLock(assetReference);
-            semaphore.Wait();
-            try
-            {
-                if (!ObjectPools.TryGetValue(assetReference, out var pool))
-                {
-                    pool = new Queue<GameObject>();
-                    ObjectPools.Add(assetReference, pool);
-                }
-                var count = pool.Count;
-                for (var i = 0; i < count; i++)
-                {
-                    var obj = pool.Dequeue();
-                    if (!obj)
-                        continue;
-                    if (!obj.activeSelf)
-                    {
-                        obj.SetActive(true);
-                        pool.Enqueue(obj);
-                        return obj;
-                    }
-                    pool.Enqueue(obj);
-                }
-
-                for (var i = 0; i < 3; i++)
-                    AddObjectToPool(assetReference).GetAwaiter().GetResult();
-                GameObject newObj = null;
-                if (ObjectPools.TryGetValue(assetReference, out pool))
-                {
-                    while (pool.Count > 0)
-                    {
-                        var temp = pool.Dequeue();
-                        if (!temp) continue;
-                        newObj = temp;
-                        break;
-                    }
-                    if (newObj)
-                    {
-                        newObj.SetActive(true);
-                        pool.Enqueue(newObj);
-                        return newObj;
-                    }
-                }
-                Debug.LogError($"[PoolManager] Failed to create object synchronously for: {assetReference}");
-                return null;
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        }
-        public static void SetPosition(this GameObject gameObject, Vector3 position)
-        {
-            gameObject.transform.position = position;
-        }
-        public static void SetRotation(this GameObject gameObject, Quaternion rotation)
-        {
-            gameObject.transform.rotation = rotation;
-        }
-        public static void SetPositionAndRotation(this GameObject gameObject, Transform targetTransform)
-        {
-            gameObject.transform.SetPositionAndRotation(targetTransform.position, targetTransform.rotation);
-        }
-        public static void SetPositionAndRotation(this GameObject gameObject, Vector3 position, Quaternion rotation)
-        {
-            gameObject.transform.SetPositionAndRotation(position, rotation);
-        }
-        public static void SetParent(this GameObject gameObject, Transform parent)
-        {
-            gameObject.transform.SetParent(parent);
-        }
-        #endregion
-
-        #region Asynchronous Methods
         public static async UniTask<GameObject> GetObjectAsync(AssetReference assetReference)
         {
             var semaphore = GetOrCreateLock(assetReference);
@@ -209,18 +133,13 @@ namespace PoolManager.Runtime
             try
             {
                 if (!ObjectPools.TryGetValue(assetReference, out var pool))
-                {
-                    pool = new Queue<GameObject>();
-                    ObjectPools.Add(assetReference, pool);
-                }
+                    ObjectPools.Add(assetReference, pool = new Queue<GameObject>());
+
                 var count = pool.Count;
-                for (var i = 0; i < count; i++)
+                for (int i = 0; i < count; i++)
                 {
                     var obj = pool.Dequeue();
-                    if (!obj)
-                    {
-                        continue;
-                    }
+                    if (!obj) continue;
                     if (!obj.activeSelf)
                     {
                         obj.SetActive(true);
@@ -229,32 +148,202 @@ namespace PoolManager.Runtime
                     }
                     pool.Enqueue(obj);
                 }
+
                 await AddObjectToPool(assetReference);
+
                 GameObject newObj = null;
-                if (ObjectPools.TryGetValue(assetReference, out pool))
+                while (pool.Count > 0)
                 {
-                    while (pool.Count > 0)
-                    {
-                        var temp = pool.Dequeue();
-                        if (!temp) continue;
-                        newObj = temp;
-                        break;
-                    }
-                    if (newObj)
-                    {
-                        newObj.SetActive(true);
-                        pool.Enqueue(newObj);
-                        return newObj;
-                    }
+                    var temp = pool.Dequeue();
+                    if (!temp) continue;
+                    newObj = temp;
+                    break;
                 }
+
+                if (newObj)
+                {
+                    newObj.SetActive(true);
+                    pool.Enqueue(newObj);
+                    return newObj;
+                }
+
                 Debug.LogError($"[PoolManager] Failed to get or create object for: {assetReference}");
                 return null;
             }
-            finally
-            {
-                semaphore.Release();
-            }
+            finally { semaphore.Release(); }
         }
+
+        public static void ReleaseObject(AssetReference assetReference, GameObject obj)
+        {
+            if (!obj) return;
+            obj.SetActive(false);
+
+            if (!ObjectPools.TryGetValue(assetReference, out var pool))
+                ObjectPools.Add(assetReference, pool = new Queue<GameObject>());
+
+            pool.Enqueue(obj);
+        }
+
+        [Obsolete("Blocking call, use with caution.")]
+        public static GameObject GetObjectSync(AssetReference assetReference)
+        {
+            var semaphore = GetOrCreateLock(assetReference);
+            semaphore.Wait();
+            try
+            {
+                if (!ObjectPools.TryGetValue(assetReference, out var pool))
+                    ObjectPools.Add(assetReference, pool = new Queue<GameObject>());
+
+                foreach (var obj in pool)
+                {
+                    if (!obj || obj.activeSelf) continue;
+                    obj.SetActive(true);
+                    return obj;
+                }
+
+                AddObjectToPool(assetReference).GetAwaiter().GetResult();
+
+                while (pool.Count > 0)
+                {
+                    var temp = pool.Dequeue();
+                    if (!temp) continue;
+                    temp.SetActive(true);
+                    pool.Enqueue(temp);
+                    return temp;
+                }
+
+                Debug.LogError($"[PoolManager] Failed to sync instantiate: {assetReference}");
+                return null;
+            }
+            finally { semaphore.Release(); }
+        }
+        #endregion
+
+        #region String Async + Sync
+        public static async UniTask CreatePool(string key, int initialSize = 10)
+        {
+            var semaphore = GetOrCreateLock(key);
+            await semaphore.WaitAsync();
+            try
+            {
+                for (int i = 0; i < initialSize; i++)
+                    await AddObjectToPool(key);
+            }
+            finally { semaphore.Release(); }
+        }
+
+        private static async UniTask AddObjectToPool(string key)
+        {
+            var prefab = await AssetManager<GameObject>.LoadAsset(key);
+            if (!prefab)
+            {
+                Debug.LogError($"[PoolManager] Failed to load asset: {key}");
+                return;
+            }
+
+            var instance = Object.Instantiate(prefab, Vector3.one * -100f, Quaternion.identity);
+            instance.SetActive(false);
+
+            if (!StringPools.TryGetValue(key, out var pool))
+                StringPools.Add(key, pool = new Queue<GameObject>());
+
+            pool.Enqueue(instance);
+        }
+
+        public static async UniTask<GameObject> GetObjectAsync(string key)
+        {
+            var semaphore = GetOrCreateLock(key);
+            await semaphore.WaitAsync();
+            try
+            {
+                if (!StringPools.TryGetValue(key, out var pool))
+                    StringPools.Add(key, pool = new Queue<GameObject>());
+
+                var count = pool.Count;
+                for (int i = 0; i < count; i++)
+                {
+                    var obj = pool.Dequeue();
+                    if (!obj) continue;
+                    if (!obj.activeSelf)
+                    {
+                        obj.SetActive(true);
+                        pool.Enqueue(obj);
+                        return obj;
+                    }
+                    pool.Enqueue(obj);
+                }
+
+                await AddObjectToPool(key);
+
+                GameObject newObj = null;
+                while (pool.Count > 0)
+                {
+                    var temp = pool.Dequeue();
+                    if (!temp) continue;
+                    newObj = temp;
+                    break;
+                }
+
+                if (newObj)
+                {
+                    newObj.SetActive(true);
+                    pool.Enqueue(newObj);
+                    return newObj;
+                }
+
+                Debug.LogError($"[PoolManager] Failed to get or create object for key: {key}");
+                return null;
+            }
+            finally { semaphore.Release(); }
+        }
+
+        public static void ReleaseObject(string key, GameObject obj)
+        {
+            if (!obj) return;
+            obj.SetActive(false);
+
+            if (!StringPools.TryGetValue(key, out var pool))
+                StringPools.Add(key, pool = new Queue<GameObject>());
+
+            pool.Enqueue(obj);
+        }
+
+        [Obsolete("Blocking call, use with caution.")]
+        public static GameObject GetObjectSync(string key)
+        {
+            var semaphore = GetOrCreateLock(key);
+            semaphore.Wait();
+            try
+            {
+                if (!StringPools.TryGetValue(key, out var pool))
+                    StringPools.Add(key, pool = new Queue<GameObject>());
+
+                foreach (var obj in pool)
+                {
+                    if (!obj || obj.activeSelf) continue;
+                    obj.SetActive(true);
+                    return obj;
+                }
+
+                AddObjectToPool(key).GetAwaiter().GetResult();
+
+                while (pool.Count > 0)
+                {
+                    var temp = pool.Dequeue();
+                    if (!temp) continue;
+                    temp.SetActive(true);
+                    pool.Enqueue(temp);
+                    return temp;
+                }
+
+                Debug.LogError($"[PoolManager] Failed to sync instantiate: {key}");
+                return null;
+            }
+            finally { semaphore.Release(); }
+        }
+        #endregion
+
+        #region Extensions
         public static async UniTask<GameObject> SetPosition(this UniTask<GameObject> task, Vector3 position)
         {
             var go = await task;
@@ -267,16 +356,10 @@ namespace PoolManager.Runtime
             go.transform.rotation = rotation;
             return go;
         }
-        public static async UniTask<GameObject> SetPositionAndRotation(this UniTask<GameObject> task, Transform targetTransform)
+        public static async UniTask<GameObject> SetPositionAndRotation(this UniTask<GameObject> task, Transform target)
         {
             var go = await task;
-            go.transform.SetPositionAndRotation(targetTransform.position, targetTransform.rotation);
-            return go;
-        }
-        public static async UniTask<GameObject> SetPositionAndRotation(this UniTask<GameObject> task, Vector3 position,Quaternion rotation)
-        {
-            var go = await task;
-            go.transform.SetPositionAndRotation(position, rotation);
+            go.transform.SetPositionAndRotation(target.position, target.rotation);
             return go;
         }
         public static async UniTask<GameObject> SetParent(this UniTask<GameObject> task, Transform parent)
@@ -285,6 +368,26 @@ namespace PoolManager.Runtime
             go.transform.SetParent(parent);
             return go;
         }
+        public static async UniTask<T> GetComponent<T>(this UniTask<GameObject> task) where T : Component
+        {
+            var go = await task;
+            return go.GetComponent<T>();
+        }
+        public static async UniTask<(GameObject, T)> GetWithComponent<T>(this UniTask<GameObject> task) where T : Component
+        {
+            var go = await task;
+            return (go, go.GetComponent<T>());
+        }
+        public static void SetPosition(this GameObject go, Vector3 position) => go.transform.position = position;
+        public static void SetRotation(this GameObject go, Quaternion rotation) => go.transform.rotation = rotation;
+        public static void SetPositionAndRotation(this GameObject go, Transform target) => go.transform.SetPositionAndRotation(target.position, target.rotation);
+        public static void SetPositionAndRotation(this GameObject go, Vector3 position, Quaternion rotation) => go.transform.SetPositionAndRotation(position, rotation);
+        public static void SetParent(this GameObject go, Transform parent) => go.transform.SetParent(parent);
+        public static T GetComponent<T>(this GameObject go) where T : Component
+        {
+            return go.GetComponent<T>();
+        }
         #endregion
     }
 }
+

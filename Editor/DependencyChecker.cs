@@ -13,7 +13,7 @@ namespace PoolManager.Editor
         private const string DefineSymbol = "POOLMANAGER_";
         private const string AsmdefPath = "Packages/com.batuhankanbur.poolmanager/Runtime/PoolManager.asmdef";
         private static string _currentInstallingPackage;
-        private static bool _hasCheckedDependencies;
+        private const string POOLMANAGER_STATE_KEY="POOLMANAGER_VERIFIED";
         private static readonly (string,string)[] RequiredPackages = new[]
         {
             ("com.batuhankanbur.assetmanager","https://github.com/BatuhanKanbur/AssetManager.git")
@@ -27,7 +27,7 @@ namespace PoolManager.Editor
         static DependencyChecker() => Run();
         private static void Run()
         {
-            if (_hasCheckedDependencies) return;
+            if (SessionState.GetBool(POOLMANAGER_STATE_KEY,false)) return;
             foreach (var requiredPackage in RequiredPackages)
             {
                 if (IsPackageInstalled($"Packages/{requiredPackage.Item1}")) continue;
@@ -40,6 +40,7 @@ namespace PoolManager.Editor
 
             if (AsmdefManager.AsmdefHasVerified(AsmdefPath))
             {
+                SessionState.SetBool(POOLMANAGER_STATE_KEY,true);
                 Debug.Log("[PoolManager] All dependencies verified.");
                 return;
             }
@@ -52,7 +53,7 @@ namespace PoolManager.Editor
             Debug.Log($"[PoolManager] Adding define symbols: {newDefineSymbol}");
             DefineManager.AddDefineSymbols(newDefineSymbol);
             Debug.Log("[PoolManager] All dependencies installed and verified.");
-            _hasCheckedDependencies = true;
+            SessionState.SetBool(POOLMANAGER_STATE_KEY,true);
         }
 
         private static void WaitForPackageInstallation()
