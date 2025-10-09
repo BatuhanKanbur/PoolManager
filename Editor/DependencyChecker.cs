@@ -18,10 +18,10 @@ namespace PoolManager.Editor
         {
             ("com.cysharp.unitask","https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask")
         };
-        private static readonly string[] RequiredReferences = new[]
+        private static readonly (string,string)[] RequiredReferences = new[]
         {
-            "UniTask",
-            "Unity.Addressables"
+            ("UniTask","UNITASK_INITIALIZED"),
+            ("Unity.Addressables","ADDRESSABLES_INITIALIZED")
         };
         static DependencyChecker() => Run();
         private static void Run()
@@ -36,18 +36,18 @@ namespace PoolManager.Editor
                 EditorApplication.update += WaitForPackageInstallation;
                 return;
             }
-
-            if (AsmdefManager.AsmdefHasVerified(AsmdefPath))
-            {
-                SessionState.SetBool(POOLMANAGER_STATE_KEY,true);
-                Debug.Log("[PoolManager] All dependencies verified.");
-                return;
-            }
             Debug.Log($"[PoolManager] {AsmdefPath} not verified, installing...");
             DefineManager.RemoveDefineSymbols(DefineSymbol);
             Debug.Log($"[PoolManager] {DefineSymbol} created.");
             Debug.Log($"[PoolManager] {AsmdefPath} found, installing...");
-            AsmdefManager.UpdateAsmdef(AsmdefPath, DefineSymbol, RequiredReferences);
+            AsmdefManager.UpdateAsmdef(AsmdefPath, DefineSymbol, RequiredReferences.Select(r => r.Item1).ToArray());
+            foreach (var requiredReference in RequiredReferences)
+            {
+                if (DefineManager.HasDefineSymbol(requiredReference.Item2)) continue;
+                Debug.LogWarning($"[PoolManager] Missing define symbol: {requiredReference.Item2}. Please ensure that the required package is installed and its asmdef is correctly configured.");
+                DefineManager.AddDefineSymbols(requiredReference.Item2);
+                Debug.Log($"[PoolManager] Added missing define symbol: {requiredReference.Item2}" );
+            }
             Debug.Log($"[PoolManager] Adding define symbols: {DefineSymbol}");
             DefineManager.AddDefineSymbols(DefineSymbol);
             Debug.Log("[PoolManager] All dependencies installed and verified.");
