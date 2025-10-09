@@ -7,11 +7,11 @@ using UnityEngine;
 
 namespace PoolManager.Editor
 {
-    // [InitializeOnLoad]
+    [InitializeOnLoad]
     public static class DependencyChecker
     {
         private const string DefineSymbol = "POOLMANAGER_INITIALIZED";
-        private const string AsmdefPath = "Packages/com.batuhankanbur.poolmanager/Runtime/PoolManager.asmdef";
+        private const string AsmdefPath = "Packages/com.batuhankanbur.poolmanager/Runtime/PoolManager.Runtime.asmdef";
         private static string _currentInstallingPackage;
         private const string POOLMANAGER_STATE_KEY="POOLMANAGER_VERIFIED";
         private static readonly (string,string)[] RequiredPackages = new[]

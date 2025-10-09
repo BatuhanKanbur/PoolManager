@@ -248,7 +248,9 @@ namespace PoolManager.Runtime
 
         private static async UniTask AddObjectToPool(Scene scene, AssetReference assetReference)
         {
-            var prefab = await Addressables.LoadAssetAsync<GameObject>(assetReference);
+            var loadAssetOp = Addressables.LoadAssetAsync<GameObject>(assetReference);
+            await loadAssetOp.Task;
+            var prefab = loadAssetOp.Result;
             if (!prefab)
             {
                 Debug.LogError($"[PoolManager] Failed to load asset: {assetReference}");
@@ -472,7 +474,9 @@ namespace PoolManager.Runtime
 
         private static async UniTask AddObjectToPool(Scene scene, string key)
         {
-            var prefab = await Addressables.LoadAssetAsync<GameObject>(key);
+            var loadAssetOp = Addressables.LoadAssetAsync<GameObject>(key);
+            await loadAssetOp.Task;
+            var prefab = loadAssetOp.Result;
             if (!prefab)
             {
                 Debug.LogError($"[PoolManager] Failed to load asset: {key}");

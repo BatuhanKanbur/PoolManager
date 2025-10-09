@@ -17,6 +17,6 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "com.unity.addressables": "1.21.17"
+    "com.unity.addressables": "*"
   }
 }
