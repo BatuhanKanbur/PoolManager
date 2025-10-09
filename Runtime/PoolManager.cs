@@ -41,7 +41,7 @@ namespace PoolManager.Runtime
 
         #region Initialization
         private static bool _initialized;
-        
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
         {
@@ -55,7 +55,7 @@ namespace PoolManager.Runtime
         }
 
         static PoolManager() => Init();
-        
+
         private static void Init()
         {
             if (_initialized) return;
@@ -69,42 +69,42 @@ namespace PoolManager.Runtime
         private static void Dispose()
         {
             if (!_initialized) return;
-            
+
             SceneManager.sceneLoaded -= OnSceneLoaded;
             SceneManager.sceneUnloaded -= OnSceneUnloaded;
             Application.quitting -= Dispose;
-            
+
             SceneObjectPools.Clear();
             ScenePoolLocks.Clear();
             SceneActiveObjects.Clear();
             SceneStringPools.Clear();
             SceneStringPoolLocks.Clear();
             SceneStringActiveObjects.Clear();
-            
+
             _initialized = false;
         }
 
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             Init();
-            
+
             if (!SceneObjectPools.ContainsKey(scene))
-                SceneObjectPools[scene] = new Dictionary<AssetReference, Queue<GameObject>>();
-            
+                SceneObjectPools[scene] = new();
+
             if (!ScenePoolLocks.ContainsKey(scene))
-                ScenePoolLocks[scene] = new Dictionary<AssetReference, SemaphoreSlim>();
-            
+                ScenePoolLocks[scene] = new();
+
             if (!SceneActiveObjects.ContainsKey(scene))
-                SceneActiveObjects[scene] = new Dictionary<AssetReference, HashSet<GameObject>>();
-            
+                SceneActiveObjects[scene] = new();
+
             if (!SceneStringPools.ContainsKey(scene))
-                SceneStringPools[scene] = new Dictionary<string, Queue<GameObject>>();
-            
+                SceneStringPools[scene] = new();
+
             if (!SceneStringPoolLocks.ContainsKey(scene))
-                SceneStringPoolLocks[scene] = new Dictionary<string, SemaphoreSlim>();
-            
+                SceneStringPoolLocks[scene] = new();
+
             if (!SceneStringActiveObjects.ContainsKey(scene))
-                SceneStringActiveObjects[scene] = new Dictionary<string, HashSet<GameObject>>();
+                SceneStringActiveObjects[scene] = new();
         }
 
         private static void OnSceneUnloaded(Scene scene)
@@ -165,69 +165,49 @@ namespace PoolManager.Runtime
         private static SemaphoreSlim GetOrCreateLock(Scene scene, AssetReference assetReference)
         {
             if (!ScenePoolLocks.TryGetValue(scene, out var locks))
-            {
-                locks = new Dictionary<AssetReference, SemaphoreSlim>();
-                ScenePoolLocks[scene] = locks;
-            }
+                ScenePoolLocks[scene] = locks = new();
 
-            if (locks.TryGetValue(assetReference, out var semaphore)) return semaphore;
-            semaphore = new SemaphoreSlim(1, 1);
-            locks.Add(assetReference, semaphore);
+            if (!locks.TryGetValue(assetReference, out var semaphore))
+                locks[assetReference] = semaphore = new(1, 1);
+
             return semaphore;
         }
 
         private static SemaphoreSlim GetOrCreateLock(Scene scene, string key)
         {
             if (!SceneStringPoolLocks.TryGetValue(scene, out var locks))
-            {
-                locks = new Dictionary<string, SemaphoreSlim>();
-                SceneStringPoolLocks[scene] = locks;
-            }
+                SceneStringPoolLocks[scene] = locks = new();
 
-            if (locks.TryGetValue(key, out var semaphore)) return semaphore;
-            semaphore = new SemaphoreSlim(1, 1);
-            locks.Add(key, semaphore);
+            if (!locks.TryGetValue(key, out var semaphore))
+                locks[key] = semaphore = new(1, 1);
+
             return semaphore;
         }
 
         private static Scene GetTargetScene()
         {
             var scene = SceneManager.GetActiveScene();
-            
             if (!SceneObjectPools.ContainsKey(scene))
                 OnSceneLoaded(scene, LoadSceneMode.Single);
-            
             return scene;
         }
 
         internal static void OnObjectDisabled(AssetReference assetReference, GameObject obj)
         {
             if (!obj) return;
-            
             var scene = obj.scene;
-
             if (SceneActiveObjects.TryGetValue(scene, out var sceneActive))
-            {
                 if (sceneActive.TryGetValue(assetReference, out var activeSet))
-                {
                     activeSet.Remove(obj);
-                }
-            }
         }
 
         internal static void OnObjectDisabled(string key, GameObject obj)
         {
             if (!obj) return;
-            
             var scene = obj.scene;
-
             if (SceneStringActiveObjects.TryGetValue(scene, out var sceneActive))
-            {
                 if (sceneActive.TryGetValue(key, out var activeSet))
-                {
                     activeSet.Remove(obj);
-                }
-            }
         }
         #endregion
 
@@ -240,7 +220,7 @@ namespace PoolManager.Runtime
             await semaphore.WaitAsync();
             try
             {
-                for (var i = 0; i < initialSize; i++)
+                for (int i = 0; i < initialSize; i++)
                     await AddObjectToPool(scene, assetReference);
             }
             finally { semaphore.Release(); }
@@ -256,29 +236,19 @@ namespace PoolManager.Runtime
                 Debug.LogError($"[PoolManager] Failed to load asset: {assetReference}");
                 return;
             }
+
             var instance = Object.Instantiate(prefab, Vector3.one * -100f, Quaternion.identity);
-            var poolable = instance.GetComponent<PoolableObject>();
-            if (!poolable)
-            {
-                poolable = instance.AddComponent<PoolableObject>();
-            }
+            var poolable = instance.GetComponent<PoolableObject>() ?? instance.AddComponent<PoolableObject>();
             poolable.AssetRef = assetReference;
             poolable.IsAssetReference = true;
-            
             instance.SetActive(false);
             SceneManager.MoveGameObjectToScene(instance, scene);
 
             if (!SceneObjectPools.TryGetValue(scene, out var scenePools))
-            {
-                scenePools = new Dictionary<AssetReference, Queue<GameObject>>();
-                SceneObjectPools[scene] = scenePools;
-            }
+                SceneObjectPools[scene] = scenePools = new();
 
             if (!scenePools.TryGetValue(assetReference, out var pool))
-            {
-                pool = new Queue<GameObject>();
-                scenePools[assetReference] = pool;
-            }
+                scenePools[assetReference] = pool = new();
 
             pool.Enqueue(instance);
         }
@@ -292,75 +262,46 @@ namespace PoolManager.Runtime
             try
             {
                 if (!SceneObjectPools.TryGetValue(scene, out var scenePools))
-                {
-                    scenePools = new Dictionary<AssetReference, Queue<GameObject>>();
-                    SceneObjectPools[scene] = scenePools;
-                }
-
-                if (!scenePools.TryGetValue(assetReference, out var pool))
-                {
-                    pool = new Queue<GameObject>();
-                    scenePools[assetReference] = pool;
-                }
+                    SceneObjectPools[scene] = scenePools = new();
 
                 if (!SceneActiveObjects.TryGetValue(scene, out var sceneActive))
-                {
-                    sceneActive = new Dictionary<AssetReference, HashSet<GameObject>>();
-                    SceneActiveObjects[scene] = sceneActive;
-                }
+                    SceneActiveObjects[scene] = sceneActive = new();
+
+                if (!scenePools.TryGetValue(assetReference, out var pool))
+                    scenePools[assetReference] = pool = new();
 
                 if (!sceneActive.TryGetValue(assetReference, out var activeSet))
-                {
-                    activeSet = new HashSet<GameObject>();
-                    sceneActive[assetReference] = activeSet;
-                }
+                    sceneActive[assetReference] = activeSet = new();
 
-                var count = pool.Count;
+                GameObject selected = null;
+                int count = pool.Count;
                 for (int i = 0; i < count; i++)
                 {
                     var obj = pool.Dequeue();
-                    
                     if (!obj)
-                    {
                         continue;
-                    }
 
                     if (!obj.activeSelf && !activeSet.Contains(obj))
                     {
-                        obj.SetActive(true);
-                        activeSet.Add(obj);
+                        selected = obj;
                         pool.Enqueue(obj);
-                        return obj;
+                        break;
                     }
-                    
+
                     pool.Enqueue(obj);
                 }
 
-                await AddObjectToPool(scene, assetReference);
-
-                GameObject newObj = null;
-                while (pool.Count > 0)
+                if (selected == null)
                 {
-                    var temp = pool.Dequeue();
-                    if (!temp)
-                    {
-                        continue;
-                    }
-                    
-                    if (!activeSet.Contains(temp))
-                    {
-                        newObj = temp;
-                        pool.Enqueue(temp);
-                        break;
-                    }
-                    pool.Enqueue(temp);
+                    await AddObjectToPool(scene, assetReference);
+                    selected = pool.LastOrDefault();
                 }
 
-                if (newObj)
+                if (selected)
                 {
-                    newObj.SetActive(true);
-                    activeSet.Add(newObj);
-                    return newObj;
+                    selected.SetActive(true);
+                    activeSet.Add(selected);
+                    return selected;
                 }
 
                 Debug.LogError($"[PoolManager] Failed to get or create object for: {assetReference} in scene: {scene.name}");
@@ -368,96 +309,9 @@ namespace PoolManager.Runtime
             }
             finally { semaphore.Release(); }
         }
-
-        [Obsolete("No longer needed. Objects automatically return to pool when disabled.")]
-        public static void ReleaseObject(AssetReference assetReference, GameObject obj, Scene? targetScene = null)
-        {
-            if (!obj) return;
-            obj.SetActive(false);
-        }
-
-        [Obsolete("Blocking call, use with caution.")]
-        public static GameObject GetObjectSync(AssetReference assetReference, Scene? targetScene = null)
-        {
-            Init();
-            var scene = targetScene ?? GetTargetScene();
-            var semaphore = GetOrCreateLock(scene, assetReference);
-            semaphore.Wait();
-            try
-            {
-                if (!SceneObjectPools.TryGetValue(scene, out var scenePools))
-                {
-                    scenePools = new Dictionary<AssetReference, Queue<GameObject>>();
-                    SceneObjectPools[scene] = scenePools;
-                }
-
-                if (!scenePools.TryGetValue(assetReference, out var pool))
-                {
-                    pool = new Queue<GameObject>();
-                    scenePools[assetReference] = pool;
-                }
-
-                if (!SceneActiveObjects.TryGetValue(scene, out var sceneActive))
-                {
-                    sceneActive = new Dictionary<AssetReference, HashSet<GameObject>>();
-                    SceneActiveObjects[scene] = sceneActive;
-                }
-
-                if (!sceneActive.TryGetValue(assetReference, out var activeSet))
-                {
-                    activeSet = new HashSet<GameObject>();
-                    sceneActive[assetReference] = activeSet;
-                }
-
-                var count = pool.Count;
-                for (int i = 0; i < count; i++)
-                {
-                    var obj = pool.Dequeue();
-                    
-                    if (!obj)
-                    {
-                        continue;
-                    }
-
-                    if (!obj.activeSelf && !activeSet.Contains(obj))
-                    {
-                        obj.SetActive(true);
-                        activeSet.Add(obj);
-                        pool.Enqueue(obj);
-                        return obj;
-                    }
-                    
-                    pool.Enqueue(obj);
-                }
-
-                AddObjectToPool(scene, assetReference).GetAwaiter().GetResult();
-
-                while (pool.Count > 0)
-                {
-                    var temp = pool.Dequeue();
-                    if (!temp)
-                    {
-                        continue;
-                    }
-                    
-                    if (!activeSet.Contains(temp))
-                    {
-                        temp.SetActive(true);
-                        activeSet.Add(temp);
-                        pool.Enqueue(temp);
-                        return temp;
-                    }
-                    pool.Enqueue(temp);
-                }
-
-                Debug.LogError($"[PoolManager] Failed to sync instantiate: {assetReference} in scene: {scene.name}");
-                return null;
-            }
-            finally { semaphore.Release(); }
-        }
         #endregion
 
-        #region String Async + Sync
+        #region String Async
         public static async UniTask CreatePool(string key, int initialSize = 10, Scene? targetScene = null)
         {
             Init();
@@ -482,29 +336,19 @@ namespace PoolManager.Runtime
                 Debug.LogError($"[PoolManager] Failed to load asset: {key}");
                 return;
             }
+
             var instance = Object.Instantiate(prefab, Vector3.one * -100f, Quaternion.identity);
-            var poolable = instance.GetComponent<PoolableObject>();
-            if (!poolable)
-            {
-                poolable = instance.AddComponent<PoolableObject>();
-            }
+            var poolable = instance.GetComponent<PoolableObject>() ?? instance.AddComponent<PoolableObject>();
             poolable.StringKey = key;
             poolable.IsAssetReference = false;
-            
             instance.SetActive(false);
             SceneManager.MoveGameObjectToScene(instance, scene);
 
             if (!SceneStringPools.TryGetValue(scene, out var scenePools))
-            {
-                scenePools = new Dictionary<string, Queue<GameObject>>();
-                SceneStringPools[scene] = scenePools;
-            }
+                SceneStringPools[scene] = scenePools = new();
 
             if (!scenePools.TryGetValue(key, out var pool))
-            {
-                pool = new Queue<GameObject>();
-                scenePools[key] = pool;
-            }
+                scenePools[key] = pool = new();
 
             pool.Enqueue(instance);
         }
@@ -518,276 +362,52 @@ namespace PoolManager.Runtime
             try
             {
                 if (!SceneStringPools.TryGetValue(scene, out var scenePools))
-                {
-                    scenePools = new Dictionary<string, Queue<GameObject>>();
-                    SceneStringPools[scene] = scenePools;
-                }
-
-                if (!scenePools.TryGetValue(key, out var pool))
-                {
-                    pool = new Queue<GameObject>();
-                    scenePools[key] = pool;
-                }
+                    SceneStringPools[scene] = scenePools = new();
 
                 if (!SceneStringActiveObjects.TryGetValue(scene, out var sceneActive))
-                {
-                    sceneActive = new Dictionary<string, HashSet<GameObject>>();
-                    SceneStringActiveObjects[scene] = sceneActive;
-                }
+                    SceneStringActiveObjects[scene] = sceneActive = new();
+
+                if (!scenePools.TryGetValue(key, out var pool))
+                    scenePools[key] = pool = new();
 
                 if (!sceneActive.TryGetValue(key, out var activeSet))
-                {
-                    activeSet = new HashSet<GameObject>();
-                    sceneActive[key] = activeSet;
-                }
+                    sceneActive[key] = activeSet = new();
 
-                var count = pool.Count;
+                GameObject selected = null;
+                int count = pool.Count;
                 for (int i = 0; i < count; i++)
                 {
                     var obj = pool.Dequeue();
-                    
                     if (!obj)
-                    {
                         continue;
-                    }
 
                     if (!obj.activeSelf && !activeSet.Contains(obj))
                     {
-                        obj.SetActive(true);
-                        activeSet.Add(obj);
+                        selected = obj;
                         pool.Enqueue(obj);
-                        return obj;
+                        break;
                     }
-                    
+
                     pool.Enqueue(obj);
                 }
 
-                await AddObjectToPool(scene, key);
-
-                GameObject newObj = null;
-                while (pool.Count > 0)
+                if (selected == null)
                 {
-                    var temp = pool.Dequeue();
-                    if (!temp)
-                    {
-                        continue;
-                    }
-                    
-                    if (!activeSet.Contains(temp))
-                    {
-                        newObj = temp;
-                        pool.Enqueue(temp);
-                        break;
-                    }
-                    pool.Enqueue(temp);
+                    await AddObjectToPool(scene, key);
+                    selected = pool.LastOrDefault();
                 }
 
-                if (newObj)
+                if (selected)
                 {
-                    newObj.SetActive(true);
-                    activeSet.Add(newObj);
-                    return newObj;
+                    selected.SetActive(true);
+                    activeSet.Add(selected);
+                    return selected;
                 }
 
                 Debug.LogError($"[PoolManager] Failed to get or create object for key: {key} in scene: {scene.name}");
                 return null;
             }
             finally { semaphore.Release(); }
-        }
-
-        [Obsolete("No longer needed. Objects automatically return to pool when disabled.")]
-        public static void ReleaseObject(string key, GameObject obj, Scene? targetScene = null)
-        {
-            if (!obj) return;
-            obj.SetActive(false);
-        }
-
-        [Obsolete("Blocking call, use with caution.")]
-        public static GameObject GetObjectSync(string key, Scene? targetScene = null)
-        {
-            Init();
-            var scene = targetScene ?? GetTargetScene();
-            var semaphore = GetOrCreateLock(scene, key);
-            semaphore.Wait();
-            try
-            {
-                if (!SceneStringPools.TryGetValue(scene, out var scenePools))
-                {
-                    scenePools = new Dictionary<string, Queue<GameObject>>();
-                    SceneStringPools[scene] = scenePools;
-                }
-
-                if (!scenePools.TryGetValue(key, out var pool))
-                {
-                    pool = new Queue<GameObject>();
-                    scenePools[key] = pool;
-                }
-
-                if (!SceneStringActiveObjects.TryGetValue(scene, out var sceneActive))
-                {
-                    sceneActive = new Dictionary<string, HashSet<GameObject>>();
-                    SceneStringActiveObjects[scene] = sceneActive;
-                }
-
-                if (!sceneActive.TryGetValue(key, out var activeSet))
-                {
-                    activeSet = new HashSet<GameObject>();
-                    sceneActive[key] = activeSet;
-                }
-
-                var count = pool.Count;
-                for (int i = 0; i < count; i++)
-                {
-                    var obj = pool.Dequeue();
-                    
-                    if (!obj)
-                    {
-                        continue;
-                    }
-
-                    if (!obj.activeSelf && !activeSet.Contains(obj))
-                    {
-                        obj.SetActive(true);
-                        activeSet.Add(obj);
-                        pool.Enqueue(obj);
-                        return obj;
-                    }
-                    
-                    pool.Enqueue(obj);
-                }
-
-                AddObjectToPool(scene, key).GetAwaiter().GetResult();
-
-                while (pool.Count > 0)
-                {
-                    var temp = pool.Dequeue();
-                    if (!temp)
-                    {
-                        continue;
-                    }
-                    
-                    if (!activeSet.Contains(temp))
-                    {
-                        temp.SetActive(true);
-                        activeSet.Add(temp);
-                        pool.Enqueue(temp);
-                        return temp;
-                    }
-                    pool.Enqueue(temp);
-                }
-
-                Debug.LogError($"[PoolManager] Failed to sync instantiate: {key} in scene: {scene.name}");
-                return null;
-            }
-            finally { semaphore.Release(); }
-        }
-        #endregion
-
-        #region Utility Methods
-        public static (int totalObjects, int activeObjects) GetPoolStats(AssetReference assetReference, Scene? targetScene = null)
-        {
-            var scene = targetScene ?? GetTargetScene();
-            
-            int total = 0;
-            int active = 0;
-
-            if (SceneObjectPools.TryGetValue(scene, out var scenePools))
-            {
-                if (scenePools.TryGetValue(assetReference, out var pool))
-                    total = pool.Count;
-            }
-
-            if (SceneActiveObjects.TryGetValue(scene, out var sceneActive))
-            {
-                if (sceneActive.TryGetValue(assetReference, out var activeSet))
-                    active = activeSet.Count;
-            }
-
-            return (total, active);
-        }
-        public static Dictionary<string, (int totalObjects, int activeObjects)> GetAllPoolStats()
-        {
-            var stats = new Dictionary<string, (int, int)>();
-
-            foreach (var scenePool in SceneObjectPools)
-            {
-                var sceneName = scenePool.Key.name;
-                int totalInScene = scenePool.Value.Values.Sum(pool => pool.Count);
-                int activeInScene = 0;
-
-                if (SceneActiveObjects.TryGetValue(scenePool.Key, out var sceneActive))
-                {
-                    activeInScene = sceneActive.Values.Sum(set => set.Count);
-                }
-
-                stats[$"{sceneName} (AssetReference)"] = (totalInScene, activeInScene);
-            }
-
-            foreach (var scenePool in SceneStringPools)
-            {
-                var sceneName = scenePool.Key.name;
-                int totalInScene = scenePool.Value.Values.Sum(pool => pool.Count);
-                int activeInScene = 0;
-
-                if (SceneStringActiveObjects.TryGetValue(scenePool.Key, out var sceneActive))
-                {
-                    activeInScene = sceneActive.Values.Sum(set => set.Count);
-                }
-
-                stats[$"{sceneName} (String)"] = (totalInScene, activeInScene);
-            }
-
-            return stats;
-        }
-        public static void ClearScenePools(Scene scene)
-        {
-            OnSceneUnloaded(scene);
-        }
-        #endregion
-
-        #region Extensions
-        public static async UniTask<GameObject> SetPosition(this UniTask<GameObject> task, Vector3 position)
-        {
-            var go = await task;
-            go.transform.position = position;
-            return go;
-        }
-        public static async UniTask<GameObject> SetRotation(this UniTask<GameObject> task, Quaternion rotation)
-        {
-            var go = await task;
-            go.transform.rotation = rotation;
-            return go;
-        }
-        public static async UniTask<GameObject> SetPositionAndRotation(this UniTask<GameObject> task, Transform target)
-        {
-            var go = await task;
-            go.transform.SetPositionAndRotation(target.position, target.rotation);
-            return go;
-        }
-        public static async UniTask<GameObject> SetParent(this UniTask<GameObject> task, Transform parent)
-        {
-            var go = await task;
-            go.transform.SetParent(parent);
-            return go;
-        }
-        public static async UniTask<T> GetComponent<T>(this UniTask<GameObject> task) where T : Component
-        {
-            var go = await task;
-            return go.GetComponent<T>();
-        }
-        public static async UniTask<(GameObject, T)> GetWithComponent<T>(this UniTask<GameObject> task) where T : Component
-        {
-            var go = await task;
-            return (go, go.GetComponent<T>());
-        }
-        public static void SetPosition(this GameObject go, Vector3 position) => go.transform.position = position;
-        public static void SetRotation(this GameObject go, Quaternion rotation) => go.transform.rotation = rotation;
-        public static void SetPositionAndRotation(this GameObject go, Transform target) => go.transform.SetPositionAndRotation(target.position, target.rotation);
-        public static void SetPositionAndRotation(this GameObject go, Vector3 position, Quaternion rotation) => go.transform.SetPositionAndRotation(position, rotation);
-        public static void SetParent(this GameObject go, Transform parent) => go.transform.SetParent(parent);
-        public static T GetComponent<T>(this GameObject go) where T : Component
-        {
-            return go.GetComponent<T>();
         }
         #endregion
     }
