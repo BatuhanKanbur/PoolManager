@@ -12,7 +12,9 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": [
+        "POOLMANAGER_INITIALIZED"
+    ],
     "versionDefines": [],
     "noEngineReferences": false
 }
