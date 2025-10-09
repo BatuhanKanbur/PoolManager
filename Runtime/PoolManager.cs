@@ -1,13 +1,17 @@
-using System;
+/*
+ * PoolManager — High-Performance Object Pool for Unity
+ * Copyright (c) 2025 Batuhan Kanbur
+ * SPDX-License-Identifier: MIT
+ * Repo: https://github.com/BatuhanKanbur/PoolManager
+ * Contact: https://www.batuhankanbur.com
+ * Version: 2.0.0
+ */
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.SceneManagement;
-using Object = UnityEngine.Object;
-
 namespace PoolManager.Runtime
 {
     internal class PoolableObject : MonoBehaviour
@@ -18,397 +22,472 @@ namespace PoolManager.Runtime
 
         private void OnDisable()
         {
-            if (IsAssetReference && AssetRef != null)
-            {
-                PoolManager.OnObjectDisabled(AssetRef, gameObject);
-            }
-            else if (!string.IsNullOrEmpty(StringKey))
-            {
-                PoolManager.OnObjectDisabled(StringKey, gameObject);
-            }
+            if (!Application.isPlaying) return;
+            PoolManager.MarkAsInactive(this);
         }
     }
 
     public static class PoolManager
     {
-        private static readonly Dictionary<Scene, Dictionary<AssetReference, Queue<GameObject>>> SceneObjectPools = new();
-        private static readonly Dictionary<Scene, Dictionary<AssetReference, SemaphoreSlim>> ScenePoolLocks = new();
-        private static readonly Dictionary<Scene, Dictionary<AssetReference, HashSet<GameObject>>> SceneActiveObjects = new();
-
-        private static readonly Dictionary<Scene, Dictionary<string, Queue<GameObject>>> SceneStringPools = new();
-        private static readonly Dictionary<Scene, Dictionary<string, SemaphoreSlim>> SceneStringPoolLocks = new();
-        private static readonly Dictionary<Scene, Dictionary<string, HashSet<GameObject>>> SceneStringActiveObjects = new();
-
-        #region Initialization
-        private static bool _initialized;
-
+        private static readonly Dictionary<Scene, Dictionary<AssetReference, HashSet<GameObject>>> SceneActiveRef = new();
+        private static readonly Dictionary<Scene, Dictionary<AssetReference, Queue<GameObject>>> SceneInactiveRef = new();
+        private static readonly Dictionary<Scene, Dictionary<AssetReference, SemaphoreSlim>> SceneLocksRef = new();
+        private static readonly Dictionary<Scene, Dictionary<string, HashSet<GameObject>>> SceneActiveStr = new();
+        private static readonly Dictionary<Scene, Dictionary<string, Queue<GameObject>>> SceneInactiveStr = new();
+        private static readonly Dictionary<Scene, Dictionary<string, SemaphoreSlim>> SceneLocksStr = new();
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
         {
-            _initialized = false;
-            SceneObjectPools.Clear();
-            ScenePoolLocks.Clear();
-            SceneActiveObjects.Clear();
-            SceneStringPools.Clear();
-            SceneStringPoolLocks.Clear();
-            SceneStringActiveObjects.Clear();
+            SceneActiveRef.Clear();
+            SceneInactiveRef.Clear();
+            SceneLocksRef.Clear();
+            SceneActiveStr.Clear();
+            SceneInactiveStr.Clear();
+            SceneLocksStr.Clear();
         }
-
-        static PoolManager() => Init();
-
-        private static void Init()
+        #region ==================== GET ASYNC ====================
+        public static async UniTask<GameObject> GetObjectAsync(AssetReference assetRef, Scene? targetScene = null)
         {
-            if (_initialized) return;
-
-            SceneManager.sceneLoaded += OnSceneLoaded;
-            SceneManager.sceneUnloaded += OnSceneUnloaded;
-            Application.quitting += Dispose;
-            _initialized = true;
-        }
-
-        private static void Dispose()
-        {
-            if (!_initialized) return;
-
-            SceneManager.sceneLoaded -= OnSceneLoaded;
-            SceneManager.sceneUnloaded -= OnSceneUnloaded;
-            Application.quitting -= Dispose;
-
-            SceneObjectPools.Clear();
-            ScenePoolLocks.Clear();
-            SceneActiveObjects.Clear();
-            SceneStringPools.Clear();
-            SceneStringPoolLocks.Clear();
-            SceneStringActiveObjects.Clear();
-
-            _initialized = false;
-        }
-
-        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-        {
-            Init();
-
-            if (!SceneObjectPools.ContainsKey(scene))
-                SceneObjectPools[scene] = new();
-
-            if (!ScenePoolLocks.ContainsKey(scene))
-                ScenePoolLocks[scene] = new();
-
-            if (!SceneActiveObjects.ContainsKey(scene))
-                SceneActiveObjects[scene] = new();
-
-            if (!SceneStringPools.ContainsKey(scene))
-                SceneStringPools[scene] = new();
-
-            if (!SceneStringPoolLocks.ContainsKey(scene))
-                SceneStringPoolLocks[scene] = new();
-
-            if (!SceneStringActiveObjects.ContainsKey(scene))
-                SceneStringActiveObjects[scene] = new();
-        }
-
-        private static void OnSceneUnloaded(Scene scene)
-        {
-            if (SceneObjectPools.TryGetValue(scene, out var objectPools))
-            {
-                foreach (var pool in objectPools.Values)
-                {
-                    while (pool.Count > 0)
-                    {
-                        var obj = pool.Dequeue();
-                        if (obj) Object.Destroy(obj);
-                    }
-                }
-                SceneObjectPools.Remove(scene);
-            }
-
-            if (ScenePoolLocks.TryGetValue(scene, out var locks))
-            {
-                foreach (var semaphore in locks.Values)
-                {
-                    semaphore?.Dispose();
-                }
-                ScenePoolLocks.Remove(scene);
-            }
-
-            if (SceneActiveObjects.ContainsKey(scene))
-                SceneActiveObjects.Remove(scene);
-
-            if (SceneStringPools.TryGetValue(scene, out var stringPools))
-            {
-                foreach (var pool in stringPools.Values)
-                {
-                    while (pool.Count > 0)
-                    {
-                        var obj = pool.Dequeue();
-                        if (obj) Object.Destroy(obj);
-                    }
-                }
-                SceneStringPools.Remove(scene);
-            }
-
-            if (SceneStringPoolLocks.TryGetValue(scene, out var stringLocks))
-            {
-                foreach (var semaphore in stringLocks.Values)
-                {
-                    semaphore?.Dispose();
-                }
-                SceneStringPoolLocks.Remove(scene);
-            }
-
-            if (SceneStringActiveObjects.ContainsKey(scene))
-                SceneStringActiveObjects.Remove(scene);
-
-            Resources.UnloadUnusedAssets();
-        }
-
-        private static SemaphoreSlim GetOrCreateLock(Scene scene, AssetReference assetReference)
-        {
-            if (!ScenePoolLocks.TryGetValue(scene, out var locks))
-                ScenePoolLocks[scene] = locks = new();
-
-            if (!locks.TryGetValue(assetReference, out var semaphore))
-                locks[assetReference] = semaphore = new(1, 1);
-
-            return semaphore;
-        }
-
-        private static SemaphoreSlim GetOrCreateLock(Scene scene, string key)
-        {
-            if (!SceneStringPoolLocks.TryGetValue(scene, out var locks))
-                SceneStringPoolLocks[scene] = locks = new();
-
-            if (!locks.TryGetValue(key, out var semaphore))
-                locks[key] = semaphore = new(1, 1);
-
-            return semaphore;
-        }
-
-        private static Scene GetTargetScene()
-        {
-            var scene = SceneManager.GetActiveScene();
-            if (!SceneObjectPools.ContainsKey(scene))
-                OnSceneLoaded(scene, LoadSceneMode.Single);
-            return scene;
-        }
-
-        internal static void OnObjectDisabled(AssetReference assetReference, GameObject obj)
-        {
-            if (!obj) return;
-            var scene = obj.scene;
-            if (SceneActiveObjects.TryGetValue(scene, out var sceneActive))
-                if (sceneActive.TryGetValue(assetReference, out var activeSet))
-                    activeSet.Remove(obj);
-        }
-
-        internal static void OnObjectDisabled(string key, GameObject obj)
-        {
-            if (!obj) return;
-            var scene = obj.scene;
-            if (SceneStringActiveObjects.TryGetValue(scene, out var sceneActive))
-                if (sceneActive.TryGetValue(key, out var activeSet))
-                    activeSet.Remove(obj);
-        }
-        #endregion
-
-        #region AssetReference Async
-        public static async UniTask CreatePool(AssetReference assetReference, int initialSize = 10, Scene? targetScene = null)
-        {
-            Init();
-            var scene = targetScene ?? GetTargetScene();
-            var semaphore = GetOrCreateLock(scene, assetReference);
+            var scene = targetScene ?? SceneManager.GetActiveScene();
+            var semaphore = GetLock(scene, assetRef);
             await semaphore.WaitAsync();
             try
             {
-                for (int i = 0; i < initialSize; i++)
-                    await AddObjectToPool(scene, assetReference);
-            }
-            finally { semaphore.Release(); }
-        }
+                var inactive = GetInactive(scene, assetRef);
+                var active = GetActive(scene, assetRef);
 
-        private static async UniTask AddObjectToPool(Scene scene, AssetReference assetReference)
-        {
-            var loadAssetOp = Addressables.LoadAssetAsync<GameObject>(assetReference);
-            await loadAssetOp.Task;
-            var prefab = loadAssetOp.Result;
-            if (!prefab)
-            {
-                Debug.LogError($"[PoolManager] Failed to load asset: {assetReference}");
-                return;
-            }
-
-            var instance = Object.Instantiate(prefab, Vector3.one * -100f, Quaternion.identity);
-            var poolable = instance.GetComponent<PoolableObject>() ?? instance.AddComponent<PoolableObject>();
-            poolable.AssetRef = assetReference;
-            poolable.IsAssetReference = true;
-            instance.SetActive(false);
-            SceneManager.MoveGameObjectToScene(instance, scene);
-
-            if (!SceneObjectPools.TryGetValue(scene, out var scenePools))
-                SceneObjectPools[scene] = scenePools = new();
-
-            if (!scenePools.TryGetValue(assetReference, out var pool))
-                scenePools[assetReference] = pool = new();
-
-            pool.Enqueue(instance);
-        }
-
-        public static async UniTask<GameObject> GetObjectAsync(AssetReference assetReference, Scene? targetScene = null)
-        {
-            Init();
-            var scene = targetScene ?? GetTargetScene();
-            var semaphore = GetOrCreateLock(scene, assetReference);
-            await semaphore.WaitAsync();
-            try
-            {
-                if (!SceneObjectPools.TryGetValue(scene, out var scenePools))
-                    SceneObjectPools[scene] = scenePools = new();
-
-                if (!SceneActiveObjects.TryGetValue(scene, out var sceneActive))
-                    SceneActiveObjects[scene] = sceneActive = new();
-
-                if (!scenePools.TryGetValue(assetReference, out var pool))
-                    scenePools[assetReference] = pool = new();
-
-                if (!sceneActive.TryGetValue(assetReference, out var activeSet))
-                    sceneActive[assetReference] = activeSet = new();
-
-                GameObject selected = null;
-                int count = pool.Count;
-                for (int i = 0; i < count; i++)
+                if (inactive.Count > 0)
                 {
-                    var obj = pool.Dequeue();
-                    if (!obj)
-                        continue;
-
-                    if (!obj.activeSelf && !activeSet.Contains(obj))
+                    var obj = inactive.Dequeue();
+                    if (obj)
                     {
-                        selected = obj;
-                        pool.Enqueue(obj);
-                        break;
+                        active.Add(obj);
+                        obj.SetActive(true);
+                        return obj;
                     }
-
-                    pool.Enqueue(obj);
                 }
 
-                if (selected == null)
-                {
-                    await AddObjectToPool(scene, assetReference);
-                    selected = pool.LastOrDefault();
-                }
-
-                if (selected)
-                {
-                    selected.SetActive(true);
-                    activeSet.Add(selected);
-                    return selected;
-                }
-
-                Debug.LogError($"[PoolManager] Failed to get or create object for: {assetReference} in scene: {scene.name}");
-                return null;
+                var handle = assetRef.InstantiateAsync();
+                var go = await handle.ToUniTask();
+                Prepare(go, assetRef);
+                active.Add(go);
+                return go;
             }
-            finally { semaphore.Release(); }
-        }
-        #endregion
-
-        #region String Async
-        public static async UniTask CreatePool(string key, int initialSize = 10, Scene? targetScene = null)
-        {
-            Init();
-            var scene = targetScene ?? GetTargetScene();
-            var semaphore = GetOrCreateLock(scene, key);
-            await semaphore.WaitAsync();
-            try
+            finally
             {
-                for (int i = 0; i < initialSize; i++)
-                    await AddObjectToPool(scene, key);
+                semaphore.Release();
             }
-            finally { semaphore.Release(); }
-        }
-
-        private static async UniTask AddObjectToPool(Scene scene, string key)
-        {
-            var loadAssetOp = Addressables.LoadAssetAsync<GameObject>(key);
-            await loadAssetOp.Task;
-            var prefab = loadAssetOp.Result;
-            if (!prefab)
-            {
-                Debug.LogError($"[PoolManager] Failed to load asset: {key}");
-                return;
-            }
-
-            var instance = Object.Instantiate(prefab, Vector3.one * -100f, Quaternion.identity);
-            var poolable = instance.GetComponent<PoolableObject>() ?? instance.AddComponent<PoolableObject>();
-            poolable.StringKey = key;
-            poolable.IsAssetReference = false;
-            instance.SetActive(false);
-            SceneManager.MoveGameObjectToScene(instance, scene);
-
-            if (!SceneStringPools.TryGetValue(scene, out var scenePools))
-                SceneStringPools[scene] = scenePools = new();
-
-            if (!scenePools.TryGetValue(key, out var pool))
-                scenePools[key] = pool = new();
-
-            pool.Enqueue(instance);
         }
 
         public static async UniTask<GameObject> GetObjectAsync(string key, Scene? targetScene = null)
         {
-            Init();
-            var scene = targetScene ?? GetTargetScene();
-            var semaphore = GetOrCreateLock(scene, key);
+            var scene = targetScene ?? SceneManager.GetActiveScene();
+            var semaphore = GetLock(scene, key);
             await semaphore.WaitAsync();
             try
             {
-                if (!SceneStringPools.TryGetValue(scene, out var scenePools))
-                    SceneStringPools[scene] = scenePools = new();
+                var inactive = GetInactive(scene, key);
+                var active = GetActive(scene, key);
 
-                if (!SceneStringActiveObjects.TryGetValue(scene, out var sceneActive))
-                    SceneStringActiveObjects[scene] = sceneActive = new();
-
-                if (!scenePools.TryGetValue(key, out var pool))
-                    scenePools[key] = pool = new();
-
-                if (!sceneActive.TryGetValue(key, out var activeSet))
-                    sceneActive[key] = activeSet = new();
-
-                GameObject selected = null;
-                int count = pool.Count;
-                for (int i = 0; i < count; i++)
+                if (inactive.Count > 0)
                 {
-                    var obj = pool.Dequeue();
-                    if (!obj)
-                        continue;
-
-                    if (!obj.activeSelf && !activeSet.Contains(obj))
+                    var obj = inactive.Dequeue();
+                    if (obj)
                     {
-                        selected = obj;
-                        pool.Enqueue(obj);
-                        break;
+                        active.Add(obj);
+                        obj.SetActive(true);
+                        return obj;
                     }
-
-                    pool.Enqueue(obj);
                 }
 
-                if (selected == null)
-                {
-                    await AddObjectToPool(scene, key);
-                    selected = pool.LastOrDefault();
-                }
-
-                if (selected)
-                {
-                    selected.SetActive(true);
-                    activeSet.Add(selected);
-                    return selected;
-                }
-
-                Debug.LogError($"[PoolManager] Failed to get or create object for key: {key} in scene: {scene.name}");
-                return null;
+                var handle = Addressables.InstantiateAsync(key);
+                var go = await handle.ToUniTask();
+                Prepare(go, key);
+                active.Add(go);
+                return go;
             }
-            finally { semaphore.Release(); }
+            finally
+            {
+                semaphore.Release();
+            }
         }
+
+        #endregion
+        #region ==================== GET SYNC ====================
+
+        public static GameObject GetObjectSync(AssetReference assetRef, Scene? targetScene = null)
+        {
+            var scene = targetScene ?? SceneManager.GetActiveScene();
+            var inactive = GetInactive(scene, assetRef);
+            var active = GetActive(scene, assetRef);
+
+            if (inactive.Count > 0)
+            {
+                var obj = inactive.Dequeue();
+                if (obj)
+                {
+                    active.Add(obj);
+                    obj.SetActive(true);
+                    return obj;
+                }
+            }
+
+            // Burada UniTask değil, Addressables native sync
+            var handle = assetRef.InstantiateAsync();
+            var go = handle.WaitForCompletion();
+            Prepare(go, assetRef);
+            active.Add(go);
+            return go;
+        }
+
+        public static GameObject GetObjectSync(string key, Scene? targetScene = null)
+        {
+            var scene = targetScene ?? SceneManager.GetActiveScene();
+            var inactive = GetInactive(scene, key);
+            var active = GetActive(scene, key);
+
+            if (inactive.Count > 0)
+            {
+                var obj = inactive.Dequeue();
+                if (obj)
+                {
+                    active.Add(obj);
+                    obj.SetActive(true);
+                    return obj;
+                }
+            }
+
+            var handle = Addressables.InstantiateAsync(key);
+            var go = handle.WaitForCompletion();
+            Prepare(go, key);
+            active.Add(go);
+            return go;
+        }
+
+        #endregion
+        #region ==================== INTERNAL HELPERS ====================
+
+        internal static void MarkAsInactive(PoolableObject obj)
+        {
+            var scene = obj.gameObject.scene;
+
+            if (obj.IsAssetReference)
+            {
+                if (!SceneActiveRef.TryGetValue(scene, out var activeDict) ||
+                    !SceneInactiveRef.TryGetValue(scene, out var inactiveDict))
+                    return;
+
+                if (!activeDict.TryGetValue(obj.AssetRef, out var activeSet) ||
+                    !inactiveDict.TryGetValue(obj.AssetRef, out var inactiveQueue))
+                    return;
+
+                if (activeSet.Remove(obj.gameObject))
+                    inactiveQueue.Enqueue(obj.gameObject);
+            }
+            else
+            {
+                if (!SceneActiveStr.TryGetValue(scene, out var activeDict) ||
+                    !SceneInactiveStr.TryGetValue(scene, out var inactiveDict))
+                    return;
+
+                if (!activeDict.TryGetValue(obj.StringKey, out var activeSet) ||
+                    !inactiveDict.TryGetValue(obj.StringKey, out var inactiveQueue))
+                    return;
+
+                if (activeSet.Remove(obj.gameObject))
+                    inactiveQueue.Enqueue(obj.gameObject);
+            }
+        }
+
+        private static SemaphoreSlim GetLock(Scene scene, AssetReference assetRef)
+        {
+            if (!SceneLocksRef.TryGetValue(scene, out var lockDict))
+                SceneLocksRef[scene] = lockDict = new();
+
+            if (!lockDict.TryGetValue(assetRef, out var sem))
+                lockDict[assetRef] = sem = new SemaphoreSlim(1, 1);
+
+            return sem;
+        }
+
+        private static SemaphoreSlim GetLock(Scene scene, string key)
+        {
+            if (!SceneLocksStr.TryGetValue(scene, out var lockDict))
+                SceneLocksStr[scene] = lockDict = new();
+
+            if (!lockDict.TryGetValue(key, out var sem))
+                lockDict[key] = sem = new SemaphoreSlim(1, 1);
+
+            return sem;
+        }
+
+        private static Queue<GameObject> GetInactive(Scene scene, AssetReference assetRef)
+        {
+            if (!SceneInactiveRef.TryGetValue(scene, out var poolDict))
+                SceneInactiveRef[scene] = poolDict = new();
+
+            if (!poolDict.TryGetValue(assetRef, out var q))
+                poolDict[assetRef] = q = new Queue<GameObject>();
+
+            return q;
+        }
+
+        private static Queue<GameObject> GetInactive(Scene scene, string key)
+        {
+            if (!SceneInactiveStr.TryGetValue(scene, out var poolDict))
+                SceneInactiveStr[scene] = poolDict = new();
+
+            if (!poolDict.TryGetValue(key, out var q))
+                poolDict[key] = q = new Queue<GameObject>();
+
+            return q;
+        }
+
+        private static HashSet<GameObject> GetActive(Scene scene, AssetReference assetRef)
+        {
+            if (!SceneActiveRef.TryGetValue(scene, out var poolDict))
+                SceneActiveRef[scene] = poolDict = new();
+
+            if (!poolDict.TryGetValue(assetRef, out var s))
+                poolDict[assetRef] = s = new HashSet<GameObject>();
+
+            return s;
+        }
+
+        private static HashSet<GameObject> GetActive(Scene scene, string key)
+        {
+            if (!SceneActiveStr.TryGetValue(scene, out var poolDict))
+                SceneActiveStr[scene] = poolDict = new();
+
+            if (!poolDict.TryGetValue(key, out var s))
+                poolDict[key] = s = new HashSet<GameObject>();
+
+            return s;
+        }
+
+        // ReSharper disable Unity.PerformanceAnalysis
+        private static void Prepare(GameObject go, AssetReference assetRef)
+        {
+            if (go.TryGetComponent<PoolableObject>(out var poolable))
+                return;
+            var p = go.AddComponent<PoolableObject>();
+            p.AssetRef = assetRef;
+            p.IsAssetReference = true;
+        }
+
+        // ReSharper disable Unity.PerformanceAnalysis
+        private static void Prepare(GameObject go, string key)
+        {
+            if (go.TryGetComponent<PoolableObject>(out var poolable))
+                return;
+            var p = go.AddComponent<PoolableObject>();
+            p.StringKey = key;
+            p.IsAssetReference = false;
+        }
+
+        #endregion
+        #region ==================== CREATE POOL (WARMUP) ====================
+
+        public static async UniTask CreatePoolAsync(AssetReference assetRef, int count, Scene? targetScene = null)
+        {
+            var scene = targetScene ?? SceneManager.GetActiveScene();
+            var semaphore = GetLock(scene, assetRef);
+            await semaphore.WaitAsync();
+            try
+            {
+                var inactive = GetInactive(scene, assetRef);
+                var active = GetActive(scene, assetRef);
+
+                int currentTotal = inactive.Count + active.Count;
+                int toCreate = Mathf.Max(0, count - currentTotal);
+                if (toCreate <= 0) return;
+
+                for (int i = 0; i < toCreate; i++)
+                {
+                    var handle = assetRef.InstantiateAsync();
+                    var go = await handle.ToUniTask();
+                    Prepare(go, assetRef);
+                    go.SetActive(false);
+                    inactive.Enqueue(go);
+                }
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }
+
+        public static async UniTask CreatePoolAsync(string key, int count, Scene? targetScene = null)
+        {
+            var scene = targetScene ?? SceneManager.GetActiveScene();
+            var semaphore = GetLock(scene, key);
+            await semaphore.WaitAsync();
+            try
+            {
+                var inactive = GetInactive(scene, key);
+                var active = GetActive(scene, key);
+
+                int currentTotal = inactive.Count + active.Count;
+                int toCreate = Mathf.Max(0, count - currentTotal);
+                if (toCreate <= 0) return;
+
+                for (int i = 0; i < toCreate; i++)
+                {
+                    var handle = Addressables.InstantiateAsync(key);
+                    var go = await handle.ToUniTask();
+                    Prepare(go, key);
+                    go.SetActive(false);
+                    inactive.Enqueue(go);
+                }
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }
+
+        public static void CreatePoolSync(AssetReference assetRef, int count, Scene? targetScene = null)
+        {
+            var scene = targetScene ?? SceneManager.GetActiveScene();
+            var inactive = GetInactive(scene, assetRef);
+            var active = GetActive(scene, assetRef);
+
+            int currentTotal = inactive.Count + active.Count;
+            int toCreate = Mathf.Max(0, count - currentTotal);
+            if (toCreate <= 0) return;
+
+            for (int i = 0; i < toCreate; i++)
+            {
+                var handle = assetRef.InstantiateAsync();
+                var go = handle.WaitForCompletion();
+                Prepare(go, assetRef);
+                go.SetActive(false);
+                inactive.Enqueue(go);
+            }
+        }
+
+        public static void CreatePoolSync(string key, int count, Scene? targetScene = null)
+        {
+            var scene = targetScene ?? SceneManager.GetActiveScene();
+            var inactive = GetInactive(scene, key);
+            var active = GetActive(scene, key);
+
+            int currentTotal = inactive.Count + active.Count;
+            int toCreate = Mathf.Max(0, count - currentTotal);
+            if (toCreate <= 0) return;
+
+            for (int i = 0; i < toCreate; i++)
+            {
+                var handle = Addressables.InstantiateAsync(key);
+                var go = handle.WaitForCompletion();
+                Prepare(go, key);
+                go.SetActive(false);
+                inactive.Enqueue(go);
+            }
+        }
+
+        #endregion
+    }
+
+    public static class PoolExtensions
+    {
+        #region === GameObject Chain ===
+
+        public static GameObject SetParent(this GameObject go, Transform parent, bool worldPositionStays = false)
+        {
+            if (go) go.transform.SetParent(parent, worldPositionStays);
+            return go;
+        }
+
+        public static GameObject SetPosition(this GameObject go, Vector3 position)
+        {
+            if (go) go.transform.position = position;
+            return go;
+        }
+
+        public static GameObject SetLocalPosition(this GameObject go, Vector3 localPosition)
+        {
+            if (go) go.transform.localPosition = localPosition;
+            return go;
+        }
+
+        public static GameObject SetRotation(this GameObject go, Quaternion rotation)
+        {
+            if (go) go.transform.rotation = rotation;
+            return go;
+        }
+
+        public static GameObject SetLocalRotation(this GameObject go, Quaternion localRotation)
+        {
+            if (go) go.transform.localRotation = localRotation;
+            return go;
+        }
+
+        public static GameObject SetScale(this GameObject go, Vector3 scale)
+        {
+            if (go) go.transform.localScale = scale;
+            return go;
+        }
+
+        public static GameObject SetActiveState(this GameObject go, bool state)
+        {
+            if (go) go.SetActive(state);
+            return go;
+        }
+
+        #endregion
+
+        #region === UniTask<GameObject> Chain ===
+
+        public static async UniTask<GameObject> SetParent(this UniTask<GameObject> task, Transform parent, bool worldPositionStays = false)
+        {
+            var go = await task;
+            if (go) go.transform.SetParent(parent, worldPositionStays);
+            return go;
+        }
+
+        public static async UniTask<GameObject> SetPosition(this UniTask<GameObject> task, Vector3 position)
+        {
+            var go = await task;
+            if (go) go.transform.position = position;
+            return go;
+        }
+
+        public static async UniTask<GameObject> SetLocalPosition(this UniTask<GameObject> task, Vector3 localPosition)
+        {
+            var go = await task;
+            if (go) go.transform.localPosition = localPosition;
+            return go;
+        }
+
+        public static async UniTask<GameObject> SetRotation(this UniTask<GameObject> task, Quaternion rotation)
+        {
+            var go = await task;
+            if (go) go.transform.rotation = rotation;
+            return go;
+        }
+
+        public static async UniTask<GameObject> SetLocalRotation(this UniTask<GameObject> task, Quaternion localRotation)
+        {
+            var go = await task;
+            if (go) go.transform.localRotation = localRotation;
+            return go;
+        }
+
+        public static async UniTask<GameObject> SetScale(this UniTask<GameObject> task, Vector3 scale)
+        {
+            var go = await task;
+            if (go) go.transform.localScale = scale;
+            return go;
+        }
+
+        public static async UniTask<GameObject> SetActiveState(this UniTask<GameObject> task, bool state)
+        {
+            var go = await task;
+            if (go) go.SetActive(state);
+            return go;
+        }
+
         #endregion
     }
 }
