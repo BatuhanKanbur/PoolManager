@@ -12,10 +12,7 @@
   "keywords": ["asset", "manager", "async", "addressables", "poolmanager"],
   "license": "MIT",
   "dependencies": {
-    "com.unity.addressables": "1.21.17"
-  }
-    "dependencies": {
-    "com.unity.addressables": "1.21.19",
+    "com.unity.addressables": "1.21.17",
     "com.unity.resourcemanager": "1.21.19"
   },
   "optionalDependencies": {
