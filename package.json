@@ -1,6 +1,6 @@
 {
   "name": "com.batuhankanbur.poolmanager",
-  "version": "1.2.1",
+  "version": "1.0.0",
   "displayName": "Pool Manager",
   "description": "PoolManager is a lightweight and async-compatible object pooling system for Unity, designed to reduce instantiation overhead and improve runtime performance. Easily integrates with Addressables and custom asset loaders.",
   "unity": "2020.3",
@@ -8,13 +8,15 @@
     "name": "Batuhan Kanbur",
     "url": "https://github.com/batuhankanbur"
   },
-  "keywords": ["asset", "manager", "async", "addressables", "poolmanager"],
+  "keywords": [
+    "asset",
+    "manager",
+    "async",
+    "addressables",
+    "poolmanager"
+  ],
   "license": "MIT",
-    "dependencies": {
-    "com.unity.addressables": "1.21.19",
-    "com.unity.resourcemanager": "1.21.19"
-  },
-  "optionalDependencies": {
-    "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask"
-  },
+  "dependencies": {
+    "com.unity.addressables": "1.21.17"
+  }
 }
