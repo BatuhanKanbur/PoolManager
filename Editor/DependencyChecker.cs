@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace PoolManager.Editor
 {
-    [InitializeOnLoad]
+    // [InitializeOnLoad]
     public static class DependencyChecker
     {
         private const string DefineSymbol = "POOLMANAGER_INITIALIZED";
