@@ -1,7 +1,9 @@
 {
     "name": "PoolManager.Editor",
     "rootNamespace": "",
-    "references": [],
+    "references": [
+        "PoolManager.Runtime"
+    ],
     "includePlatforms": [
         "Editor"
     ],
@@ -10,9 +12,7 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [
-        "UNITY_EDITOR"
-    ],
+    "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": false
 }

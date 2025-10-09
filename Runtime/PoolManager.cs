@@ -1,53 +1,52 @@
 /// <summary>
-/// Developed by Batuhan Kanbur, this is a fully static, MonoBehaviour-free,
-/// UniTask-powered, and AssetReference-based modern Object Pool system for Unity.
-///
-/// - Requires no ScriptableObject, interfaces, or extra components,
-///   managing pools efficiently via simple active/inactive state control.
-/// - Fully compatible with Addressables through AssetReference usage.
-/// - Thread-safe with SemaphoreSlim and async UniTask-based pool access.
-/// - Designed with performance and ease of use as top priorities.
-///
-/// "True engineering is solving complex problems with simple and sustainable solutions."
-/// — Batuhan Kanbur, Game Developer.
-///
-/// This package is optimized for professionals seeking to boost productivity
-/// by combining clean architecture with cutting-edge Unity technologies.
+/// Compile-safe, UPM-ready PoolManager with conditional defines and runtime fallback.
 /// </summary>
-///
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using AssetManager.Runtime;
-using Cysharp.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.AddressableAssets;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
 
+#if HAS_UNITASK
+using Cysharp.Threading.Tasks;
+#endif
+
+#if HAS_ADDRESSABLES
+using UnityEngine.AddressableAssets;
+#endif
+
 namespace PoolManager.Runtime
 {
+
     internal class PoolableObject : MonoBehaviour
     {
+#if HAS_ADDRESSABLES
         [HideInInspector] public AssetReference AssetRef;
+#endif
         [HideInInspector] public string StringKey;
         [HideInInspector] public bool IsAssetReference;
 
         private void OnDisable()
         {
+#if HAS_ADDRESSABLES
             if (IsAssetReference && AssetRef != null)
             {
                 PoolManager.OnObjectDisabled(AssetRef, gameObject);
+                return;
             }
-            else if (!string.IsNullOrEmpty(StringKey))
+#endif
+            if (!string.IsNullOrEmpty(StringKey))
             {
-                PoolManager.OnObjectDisabled(StringKey, gameObject);
+                // PoolManager.OnObjectDisabled(StringKey, gameObject);
             }
         }
     }
 
-    public static class PoolManager
+#if HAS_UNITASK && HAS_ADDRESSABLES
+
+public static class PoolManager
     {
         // Scene-based pools
         private static readonly Dictionary<Scene, Dictionary<AssetReference, Queue<GameObject>>> SceneObjectPools = new();
@@ -267,7 +266,9 @@ namespace PoolManager.Runtime
 
         private static async UniTask AddObjectToPool(Scene scene, AssetReference assetReference)
         {
-            var prefab = await AssetManager<GameObject>.LoadAsset(assetReference);
+            var loadAsset =  Addressables.LoadAssetAsync<GameObject>(assetReference);
+            await loadAsset.ToUniTask();
+            var prefab = loadAsset.Result;
             if (!prefab)
             {
                 Debug.LogError($"[PoolManager] Failed to load asset: {assetReference}");
@@ -491,7 +492,9 @@ namespace PoolManager.Runtime
 
         private static async UniTask AddObjectToPool(Scene scene, string key)
         {
-            var prefab = await AssetManager<GameObject>.LoadAsset(key);
+            var loadAsset =  Addressables.LoadAssetAsync<GameObject>(key);
+            await loadAsset.ToUniTask();
+            var prefab = loadAsset.Result;
             if (!prefab)
             {
                 Debug.LogError($"[PoolManager] Failed to load asset: {key}");
@@ -809,4 +812,22 @@ namespace PoolManager.Runtime
         }
         #endregion
     }
+
+#else
+
+    public static class PoolManager
+    {
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterAssembliesLoaded)]
+        private static void __Warn()
+        {
+            Debug.LogWarning("[PoolManager] Inactive: UniTask and/or Addressables not detected. Install dependencies to enable pooling.");
+        }
+
+        // Minimal API placeholders to avoid hard compile errors in consumer code that only references the type.
+        // NOTE: Methods with UniTask or AssetReference signatures are not declared here to avoid missing type errors
+        // when those packages are absent. Consumers should wrap their usage in HAS_UNITASK / HAS_ADDRESSABLES.
+    }
+
+#endif
+
 }
