@@ -1,9 +1,8 @@
 #if !POOLMANAGER_INITIALIZED
-using Cysharp.Threading.Tasks;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.SceneManagement;
-using System.Collections.Generic;
 
 namespace PoolManager.Runtime
 {
@@ -15,16 +14,16 @@ namespace PoolManager.Runtime
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void Warn() => Debug.LogError(ERROR_MSG);
 
-        public static UniTask<GameObject> GetObjectAsync(AssetReference assetRef, Scene? targetScene = null)
+        public static Task GetObjectAsync(AssetReference assetRef, Scene? targetScene = null)
         {
             Debug.LogError(ERROR_MSG);
-            return UniTask.FromResult<GameObject>(null);
+            return Task.FromResult<GameObject>(null);
         }
 
-        public static UniTask<GameObject> GetObjectAsync(string key, Scene? targetScene = null)
+        public static Task<GameObject> GetObjectAsync(string key, Scene? targetScene = null)
         {
             Debug.LogError(ERROR_MSG);
-            return UniTask.FromResult<GameObject>(null);
+            return Task.FromResult<GameObject>(null);
         }
 
         public static GameObject GetObjectSync(AssetReference assetRef, Scene? targetScene = null)
@@ -39,16 +38,16 @@ namespace PoolManager.Runtime
             return null;
         }
 
-        public static UniTask CreatePoolAsync(AssetReference assetRef, int count, Scene? targetScene = null)
+        public static Task CreatePoolAsync(AssetReference assetRef, int count, Scene? targetScene = null)
         {
             Debug.LogError(ERROR_MSG);
-            return UniTask.CompletedTask;
+            return Task.CompletedTask;
         }
 
-        public static UniTask CreatePoolAsync(string key, int count, Scene? targetScene = null)
+        public static Task CreatePoolAsync(string key, int count, Scene? targetScene = null)
         {
             Debug.LogError(ERROR_MSG);
-            return UniTask.CompletedTask;
+            return Task.CompletedTask;
         }
 
         public static void CreatePoolSync(AssetReference assetRef, int count, Scene? targetScene = null)
@@ -70,17 +69,17 @@ namespace PoolManager.Runtime
             return go;
         }
 
-        public static UniTask<GameObject> SetParent(this UniTask<GameObject> task, Transform parent, bool worldPositionStays = false)
+        public static Task<GameObject> SetParent(this Task<GameObject> task, Transform parent, bool worldPositionStays = false)
         {
             Debug.LogError("[PoolManager] Dummy extension invoked.");
-            return UniTask.FromResult<GameObject>(null);
+            return Task.FromResult<GameObject>(null);
         }
 
         // Aynı şekilde diğer extension’lar:
         public static GameObject SetPosition(this GameObject go, Vector3 pos) { Debug.LogError("[PoolManager] Dummy extension invoked."); return go; }
-        public static UniTask<GameObject> SetPosition(this UniTask<GameObject> task, Vector3 pos) { Debug.LogError("[PoolManager] Dummy extension invoked."); return UniTask.FromResult<GameObject>(null); }
+        public static Task<GameObject> SetPosition(this Task<GameObject> task, Vector3 pos) { Debug.LogError("[PoolManager] Dummy extension invoked."); return UniTask.FromResult<GameObject>(null); }
         public static GameObject SetRotation(this GameObject go, Quaternion rot) { Debug.LogError("[PoolManager] Dummy extension invoked."); return go; }
-        public static UniTask<GameObject> SetRotation(this UniTask<GameObject> task, Quaternion rot) { Debug.LogError("[PoolManager] Dummy extension invoked."); return UniTask.FromResult<GameObject>(null); }
+        public static Task<GameObject> SetRotation(this Task<GameObject> task, Quaternion rot) { Debug.LogError("[PoolManager] Dummy extension invoked."); return UniTask.FromResult<GameObject>(null); }
     }
 }
 #endif
