@@ -77,9 +77,9 @@ namespace PoolManager.Runtime
 
         // Aynı şekilde diğer extension’lar:
         public static GameObject SetPosition(this GameObject go, Vector3 pos) { Debug.LogError("[PoolManager] Dummy extension invoked."); return go; }
-        public static Task<GameObject> SetPosition(this Task<GameObject> task, Vector3 pos) { Debug.LogError("[PoolManager] Dummy extension invoked."); return UniTask.FromResult<GameObject>(null); }
+        public static Task<GameObject> SetPosition(this Task<GameObject> task, Vector3 pos) { Debug.LogError("[PoolManager] Dummy extension invoked."); return Task.FromResult<GameObject>(null); }
         public static GameObject SetRotation(this GameObject go, Quaternion rot) { Debug.LogError("[PoolManager] Dummy extension invoked."); return go; }
-        public static Task<GameObject> SetRotation(this Task<GameObject> task, Quaternion rot) { Debug.LogError("[PoolManager] Dummy extension invoked."); return UniTask.FromResult<GameObject>(null); }
+        public static Task<GameObject> SetRotation(this Task<GameObject> task, Quaternion rot) { Debug.LogError("[PoolManager] Dummy extension invoked."); return Task.FromResult<GameObject>(null); }
     }
 }
 #endif
