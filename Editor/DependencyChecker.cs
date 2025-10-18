@@ -22,6 +22,7 @@ namespace PoolManager.Editor
         {
             ("UniTask","UNITASK_INITIALIZED"),
             ("UniTask.Addressables","UNITASK_INITIALIZED"),
+            ("Unity.ResourceManager","UNITASK_INITIALIZED"),
             ("Unity.Addressables","ADDRESSABLES_INITIALIZED")
         };
         static DependencyChecker() => Run();
