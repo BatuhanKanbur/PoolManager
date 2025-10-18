@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -33,6 +33,7 @@ namespace PoolManager.Editor
             var asmdefText = File.ReadAllText(asmdefPath);
             var asmdef = JsonUtility.FromJson<AsmdefData>(asmdefText);
             var refs = asmdef.references.ToList();
+            refs.Clear();
             var defineConstraints = asmdef.defineConstraints.ToList();
             foreach (var requiredReference in requiredRefs)
                 TryAdd(requiredReference);
