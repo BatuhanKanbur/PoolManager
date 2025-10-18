@@ -6,6 +6,7 @@
  * Contact: https://www.batuhankanbur.com
  * Version: 2.0.0
  */
+#if POOLMANAGER_INITIALIZED
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
@@ -491,3 +492,4 @@ namespace PoolManager.Runtime
         #endregion
     }
 }
+#endif

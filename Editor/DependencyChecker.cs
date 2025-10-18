@@ -21,6 +21,7 @@ namespace PoolManager.Editor
         private static readonly (string,string)[] RequiredReferences = new[]
         {
             ("UniTask","UNITASK_INITIALIZED"),
+            ("UniTask.Addressables","UNITASK_INITIALIZED"),
             ("Unity.Addressables","ADDRESSABLES_INITIALIZED")
         };
         static DependencyChecker() => Run();
