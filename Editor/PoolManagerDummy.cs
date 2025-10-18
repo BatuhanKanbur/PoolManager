@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 
 namespace PoolManager.Runtime
 {
-    internal static class PoolManager
+    public static class PoolManager
     {
         private const string ERROR_MSG = 
             "[PoolManager] Not initialized. Define POOLMANAGER_INITIALIZED or install the PoolManager package.";
@@ -61,7 +61,7 @@ namespace PoolManager.Runtime
         }
     }
 
-    internal static class PoolExtensions
+    public static class PoolExtensions
     {
         public static GameObject SetParent(this GameObject go, Transform parent, bool worldPositionStays = false)
         {
